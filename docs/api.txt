@@ -1,0 +1,234 @@
+<a href="./">Home</a>
+
+This document describes the Deft API that is exposed to the outside
+world. All of these functions have been written with an internal loop
+that unwinds at the top. Some will accumulate the entire stream and
+rewind the whole stream at once (aggregation type functions must do
+this). Others simply rewind each record as they finish with it.
+
+
+While user written Deft subroutines are not part of the API, I'll talk
+about them briefly.
+
+User written subroutines are simply Perl subroutines in the Deft
+script. Deft understands this and wraps them with an unwind and
+rewind. Any variables (except $1.. $n) in the user subroutine refer to
+and will be created as necessary in the record stream. Variables do
+not carry their values over between iterations on the records. In
+other words, counters won't work. If you want a counter, you need to
+use a Deft API aggregation call (which doesn't exist yet) or write a
+new Deft API subroutine (which is pretty easy). Aggregation and other
+Deft-ish row and column subroutines are already planned.
+
+
+Table of Contents
+
+do_sql_simple   - SQL queries
+dcc             - declare control column for templates
+do_search       - search engine
+dump_stream     - print record stream for debugging
+read_tab_data   - read tab separated data file
+render          - render a template
+
+
+
+--
+do_sql_simple ("database", "primary key", "sql statement");
+
+Run an SQL query.
+
+"database" must be a database name in the deft_tables table. Deft uses
+information in that record to connect to the named database. The "sql
+statement" is run once for each record in the stream. If you need a
+variable substitution, just put in the variable with a quoted $. For
+example, to find all the records with a keyword match against $findme
+in the stream:
+
+do_sql_simple("bug_pages", "", "select * from bug_faq where keywords ilike '%\$findme%' and valid=1");
+
+The "primary key" paramter is only used by insert statements. It will
+return the currval of sequence "primary key". (I think.)
+
+
+keep ("comma list of columns")
+
+Keep the named columns in the stream, throwing out all unnamed
+columns. 
+
+"comma list of columns" is a string with a comma separated list of
+column names from the stream. Spaces are probably bad. Columns
+that don't exist are ignored. Any columns not named are delete from
+the stream. System columns beginning with underscore ( _ ) cannot be
+managed from the API, and will always be kept.
+
+Example:
+
+keep("findme,bf_pk");
+
+--
+dcc ("control column", "columns to aggregate", ["where exp"], ["sorting exp"]);
+
+Declare control column with the result of aggregation, ranking and
+sorting. 
+
+"control column" is a column name that is created by dcc. Invent a
+name you like.
+
+"columns to aggregate" is a comma separated list of existing columns
+which are aggregated. The values in these columns determine how many
+times the loop in the template will iterate. Loops only interate for
+unique values of the aggregated columns.
+
+["where exp"] is an anonymous array of string expressions that each
+look similar to SQL "where" expressions. Each of
+these expressions must be true for a record to be aggregated. If you
+want all records simply use [""] which is an array with one empty
+string. 
+
+["sorting exp"] is an anonymous array of string expressions to sort the
+control column. No sorting is the empty list [] (this is different
+from the syntax of the where expression). The format of the strings is
+"column,(a|d)(t|n)". For example:
+"bf_pk,at"
+"bf_pk,an"
+"bf_pk,dt"
+"bf_pk,dn"
+
+'a' and 'd' are ascending and descending respectively.
+'t' and 'n' are text and numeric respectively. 
+
+Test sorting is alphabetic. Numeric sorting is numeric.
+
+A control column is the controlling variable for a loop in the
+template. There must be one and only one of these per template loop.
+
+You may aggregate on multiple columns. In fact, when you nest loops,
+you must have all the inner loop's columns aggregated by the
+parent. The Deft creators discussed having the parent aggregate the
+children automatically, but I don't think that ever happened, so you
+have to specify all the inner loop columns.
+
+Logical problems with control columns are probably the most common
+reason for a template not to have the expected number of iterated
+loops. The other reason would be a failure to get the expected number
+of records (i.e. SQL failure).
+
+The values of control columns can be interpreted, but it isn't
+easy. When debugging, assume that dcc() is working correctly and that
+you have a data, spelling, or column name error. Use dump_stream() to
+view column names and values for your stream.
+
+Order of dcc calls within a Deft script should not matter (Deft has
+record order independence). The order of the records doesn't matter
+since the control column encodes sort order.
+
+See runt template documentation for the format of the control column
+specifier within a template.
+
+
+--
+do_search ("default search", "columns to search", "rank column");
+
+This will use column "findme" or your default to match records from
+the column list to search. The "rank column" is created and contains
+the number of hits for that record. Use the ranking column in a 'where'
+expression in a dcc() call when aggregating.
+
+Matches follow search engine arithmetic, include * as a wildcard, and
+may include column specifiers (which partially overrides the columns
+to search list). Searches look something like:
+["][column:][+|-][*]term[*]["]
+
+'column' is a column name, and if present must be colon terminated.
+'+' means this search term must hit for the record to hit.
+'-' means this search term must not hit for the record to hit.
+'*' is the wild card and can appear at any position in the search
+term.
+'term' is a word. It can include letters and numbers. Terms are
+separted by spaces (whitespace).
+
+The entire expression may be surrounded by "" (double quotes) to allow
+phrase searching.
+
+
+--
+dump_stream ();
+
+Dumps the record stream to standard out. The output is wrapped in HTML
+to be web browser friendly. Every column is named alongside it's
+value. End of record is marked with eor.
+
+This is a handy diagnostic tool.
+
+
+--
+read_tab_data ("filename", "column names");
+
+Read a file of tab separated data. Assign the values to the colums
+named in the colume name list.
+
+"filename" is a string containing a full path file name.
+
+"column names" is a string containing a comma seprated list of column
+names. These columns will be created. I suppose if these columns
+exist, they will be overwritten. This function is currently badly
+behaved since it does not unwind existing records in the stream (bug).
+
+
+--
+render ("filename column", "output header", "template file name", "template variable name");
+
+Render the template named.
+
+"filename column" is a column holding the name of the output
+file. This is typically the empty string, in which case output goes to
+standard out.
+
+"output header" is prepended to the output. Typically this is an HTML
+http header line.
+
+"template file name" is the file name of the original
+template. Templates are compiled and saved in the database. At present
+Deft must be able to read this file name (full path may be
+necessary). However, Deft doesn't not need write access to the
+directory containing the template. At present the template is compiled
+each time it is called. In the near future the template's timestamp
+will be compared with the compiled version in the database and only
+re-compiled if the file is newer.
+
+"template variable name" is the name of a variable in the stream
+containing the name of the template. If non-null this overrides the
+third parameter.
+
+It is important that render() be the last line of the Deft script,
+especially in the multitasking version. In the multitasking version,
+the last line of Deft is guaranteed to run on the machine that invoked
+Deft, and is therefore the only machine where standard out has any
+meaning.
+
+
+--
+return_col
+
+--
+return_true
+
+--
+return_false
+
+--
+insert
+
+Not currently supported. It was planned as an SQL wrapper.
+
+--
+crush_on;
+
+Not supported. This will be an aggregation subroutine.
+
+--
+distinct_on
+
+Not supported. Old version of dcc().
+
+

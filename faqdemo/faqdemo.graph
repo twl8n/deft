@@ -1,0 +1,31 @@
+faqdemo
+draw_all	"edit_state"	edit
+draw_all 	"delete" 	ask_delete
+draw_all 	"insert" 	edit_blank
+draw_all	draw_all	wait,draw_all
+
+edit		edit		wait,save
+
+edit_blank	edit_blank	wait,insert
+
+save		save		post_save
+
+post_save	"continue"	edit
+post_save	true		draw_all
+
+insert		insert		post_save
+
+continue	"continue" 	edit
+continue	true		draw_all
+
+ask_delete 	ask_delete	wait,answer_delete
+
+answer_delete  	"confirm"	delete
+answer_delete 	true		draw_all
+
+delete 		delete 		draw_all
+
+#edit	 	have_continue 	save
+#edit	 	have_next 	save
+#save 		have_next 	next_record
+#next_record 	true 		edit

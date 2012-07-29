@@ -1,0 +1,123 @@
+<a href="./">Home</a>
+
+The Deft philosophy is that templates are display layer documents and
+contain no code. The roles of "programmer" and "designer" are
+separate. There are many good reasons for this separation.
+
+First we will look at the templates, then we'll explain dcc() (declare
+control column).
+
+
+Deft templates are text files with special control structures.
+
+For historical reasons we call a control structure a "cstring"
+pronounced see-string (mnemonic: control string). The
+cstring is surrounded by curly braces { }.
+
+The portion of the template under the control of a cstring is called a
+"loop" (mnemonic: loop through the records). 
+
+A cstring is contains information about what variable controls the loop,
+and where the loop begins and ends in the template.
+
+Deft templates have "variables" which are symbolic references to
+fields in the data stream. (mnemonic: variables in the usual
+sense). Deft has normal variables which are simply substituted with
+their corresponding value from the record set. However, variables
+capable of controlling a loop are special in that they must be
+explicitly create in a Deft script by the dcc() function. Variables
+controlling cstrings are called "loop variables" or "cstring
+variables".
+
+
+To specify which part of the template is managed by a cstring, the
+template designer chooses substrings of the template as beginning and
+ends of the loop. A required counting number allows counting backward
+or forward N instances of each substring, relative to the position of
+the cstring.
+
+{$loop_var start -2 To stop +3 is}
+
+The statement above is a typical cstring. If you consider this
+document a template, then the following is true:
+
+The loop variable created by dcc() is $loop_var.
+
+The loop starts before "To" in the sentence before the
+control statement. In other words, to the left of "To".
+
+The loop ends before the second left side of the second "is" in the
+sentence after the cstring which happens to be in the word "this". In
+other words, to the left of the second "is".
+
+Loop ends are zero length. They are considered to be between
+characters. The loop ends between the letter 'h' and the letter
+'i'. Counting starts at 1. Negative numbers count backward, and
+positive numbers count forward.
+
+Loop variables are created in the Deft script that renders the
+template. Deft has a special function dcc() that exists to create
+control variables. Control variables created by dcc() are understood
+by the Deft render() function.
+
+The cstring is not really 'code'. In any case, templates contain text
+(usually HTML), zero or more cstrings, and zero or more Deft
+variables. Any other "code" is in the Deft script. 
+
+
+
+The Deft API call dcc() is an example of a special aggregation function.
+These Deft API functions keep state information about the Deft
+stream. There are three main aspects of dcc():
+
+1) distinct values of variables are tracked (aggregation)
+
+2) conditionals are applied to variables
+
+3) variables are sorted
+
+The stream of data is not changed by dcc() except to create a new
+variable. The loop variable created by dcc() embodies any and all of the
+above three qualities that the programmer specifies.
+
+As a minimum, a loop variable must be 'distinct' and/or
+'conditional'. Sorting is not required.
+
+Here is a typical call to dcc(), although syntax is certain to be changed for the
+better in the future:
+
+dcc("loop_var", "title", [""], []);
+
+That is:
+
+dcc(loop variable, distinct, where, sorting)
+
+The loop variable is the name of the variable without the $.
+
+The distinct is a comma separated list of names of variables which
+need to be distinct.
+
+The where is an anonymous array of strings of the form "variable
+operator value", i.e. "title ne boring". If the where is empty, it
+must be a one element array with a single empty string [""].
+
+Sort is also an anonymous array of strings, and has a variable name,
+and a two letter sort for data type and ascending or descending. If
+the sort is empty, it must be an empty array [].
+
+"title,at" is $title sorted ascending, text
+"ranking,dn" is $ranking sorted descending numeric.
+
+The output of dcc() is a specially encoded variable in the Deft data
+stream. This variable is interpreted by the Deft API function
+render() to create a finished document. 
+
+Due to the nature of Deft and its data, several loop variables can be
+created on the same column or columns, but with different distinct, where and
+sorting properties. It is necessary for the programmer and designer to
+communicate about the required output. Typically there is a 'customer'
+who has requested a report. The programmer creates the data
+representation of the report. The designer creates the display
+representation. The Deft script does not contain display information,
+and the template contains no code.
+

@@ -1,0 +1,86 @@
+sub ackerman_perl
+{
+	if (scalar(@_) == 1)
+	{
+		return ($_[0]);
+	}
+	($op, $right) = splice @_, $#_ - 1, 2;
+	my @tmp = @_;
+	$op--;
+	if ($op)
+	{
+		foreach (2..$right)
+		{
+			push @tmp, $op;
+			push @tmp, @_;
+		}
+	}
+	else
+	{
+		$tmp[$#tmp] += $right;
+	}
+	&ackerman_perl(@tmp);
+}
+
+sub ackerman_deft_string ($expression)
+{
+	$expression =~ s/\s+(\d+)\s+(\d+)$//;
+	($op, $right) = $1, $2;
+	$tmp = $expression;
+	$op--;
+	if ($op)
+	{
+		$tmp .= "$op $tmp " x $right;
+		chop $tmp;
+	}
+	else
+	{
+		$tmp =~ s/(\d+)$/\1 + $right/e;
+	}
+	if_simple ($expression =~ /^\d+\s+((\d+\s+){2})+)
+	{
+		&ackerman_deft_string($tmp);
+	}
+}
+
+sub ackerman_deft_nostring ($left, $op, $right)
+{
+	$left .= ":1";
+	$op .= ":2";
+	$right .= ":3";
+	make_col("exp",'($left,$right,$op)');
+	($exp,$order) = split(':',$exp);
+	helper("$left $op $right",$exp,$order);
+	$left = $exp;
+}
+
+sub helper ($dist, $exp, $order)
+{
+	distinct_on('max',"dist",'order');
+	self_select("exp as op, dist as check", 
+		'$order == ($max - 1) && $dist eq $check');
+	self_select("exp as right, dist as check", 
+		'$order == $max && $dist eq $check');
+	$op--;
+	keep_row('$order != $max');
+	if_simple (!$op && $order == $max-2)
+	{
+		$exp += $right;
+		$max -= 2;
+		keep_row('$order < ($max - 1)');
+	}
+	if_simple ($op)
+	{
+		make_col('tmp','0..($right-1)');
+		$order = $order + ($tmp * ($max - 1));
+		unless ($order % ($max - 1))
+		{
+			$exp = $op;
+		}
+		keep_row('$order != ($right * ($max - 1))');
+	}
+	if_simple ($max > 1)
+	{
+		&helper($dist,$exp, $order);
+	}		
+}	

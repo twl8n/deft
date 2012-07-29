@@ -1,0 +1,146 @@
+<a href="./">Home</a>
+
+Deft is a data manipulation and reporting language written in and
+is essentially Perl, but executed very different from Perl code. Deft
+relies on SQL for database interaction (select, insert, update,
+delete, etc.). Deft has its own templating solution which is tailored
+toward HTML output.
+
+Deft is declarative much like SQL. Each statement operates on a data
+set and produces a data set as output. There is little (or no)
+interaction between records (rows), and there is no looping since
+loops are implied. SQL has minimal row-wise interaction, being
+limited to operations such as 'group by' and 'sort'. Deft obviates the
+need for 'sort'. SQL 'group by' will typically be used less often in a
+Deft script.
+
+Conceptually, a Deft variable is a set, and the stream is a subset of 
+the carteasian join of all the variables. Current implementation uses 
+this brute force approach since many practicle problems are within the 
+scope of current computing power. The advantages of this data handleing 
+scheme are two-fold. First is ease of application implementation. With 
+the details of handling data structure design and management abstracted 
+away by the language many of the details of programming are simplified, 
+regularized, and yes shortend. Code reuse is also aided with a universal
+I/O system allowing modules to be plugged together very easily. Second 
+nearly any degree of optimization must be accomplished in the interpreter. 
+This means that improvements to the interpreter can have a ripple efect 
+of improving a lot of code at once thus offseting the complexities of 
+compiler writing. The interface between the language and the interpreter 
+is clean enough that several improvments can be made without reference to 
+specific source code allowing this process to be possible. Finally the 
+language is structure in such a way that all known optimizations are on 
+the table for comiler improvment. Parallelism in several forms is reletively
+easy to add. Various well documented and often used re-writing strategies 
+can bear fruit. Also index like structures could be added just as they are 
+to modern databases.
+
+While some aggregation operations (sum, count, average) have internal
+state information, all other types of Deft statements have no stateful
+behavior. This leads to fewer bugs, and faster development time.
+
+Data independence (record independence) also means that each step of a
+manipulation can be performed sequentially by separate processes
+chained together. We have created an execution and report rendering
+environment where record order is meaningless. Explicit order
+necessary for rendering a report is handled by special aggregation
+functions that create control columns in the data set.. A report can
+represent the data in several orderings if necessary (which would be
+difficult in other environments).
+
+Deft handles the execution, process management, data stream (records),
+and template rendering.
+
+With the concepts of 'record' and 'stream' and 'processes' alluded to
+(if not explained), it is worth noting that future planned versions of
+Deft will be entirely database resident. The concept of a first normal
+form record would remain, but the implementation would in fact be
+third normal form (or higher) and there would be only an implicit
+stream. Even the processes are likely to become splintered into a
+melange of processes and threads. At present the concepts and
+implementation are almost identical, but that will not always be true.
+
+As an example we shall imagine a conference schedule. We'll limit our
+example to 'topics' each of which has one or more 'speakers', so that
+we have a simple relational model. To create the web page of the
+conference schedule it will take several lines of Deft code (here
+represented as meta code, with lines numbered for clarity.)
+
+1. select topics
+2. select speakers for each topic
+3. create a control column for unique topics, sorted by time
+4. create a column of unique authors by topic, sort by author last name
+5. render a template (using the two columns we created)
+
+This is a typical web CGI Deft script. We have working, mature,
+production quality, data driven, search engine based, web sites driven
+by Deft scripts with less than 10 lines of Deft code.
+
+The two select statements use SQL. Deft knows how to talk to databases
+(using Perl DBI), and an application specific configuration file holds
+information like hostname, database name, userid, etc. 
+
+In the example above, the second select will cross multiply the number
+of topics by the number of authors per topic. From a table-centric or
+data-structure-centric view this is a huge waste of space. In reality,
+it consumes very little memory or bandwidth. More importantly, each
+record is complete and can be handled independently of other records,
+until the final rendering step.
+
+Lines 3 and 4 are necessary as a prelude to the rendering step. Based
+on the requirements (i.e. unique topic), a new column with special
+Deft encoding is created. This column contains a string that tells if
+a record will be emitted in the rendering step, and what order it
+should be rendered in. Lines 3 and 4 are interchangeable in order. It
+is important that line 4 requires both unique author and topic. In our
+example, topics create a new row in the HTML output, and authors are
+listed within that row (perhaps even in table cells). This
+relationship must be spelled out in the control column created by
+statement 4, and is therefore explicit. 
+
+The template must also mirror this relationship. If the template
+designer must create a row in the template for the topic, and author
+must be 'inside' that row. The specification of the control columns
+and template are part of the specification of the final web page. We
+envision that the template creation will often be carried out by a
+HTML expert who may know nothing of databases (and doesn't need to)
+while the Deft script is created by a DBA or programmer who knows
+nothing about HTML and design. As long as certain core aspects of the
+specification are followed, changes to either the Deft script or the
+HTML template are totally independent.
+
+The template is HTML (100% pure standard HTML that will render in any
+browser, and is editable by any web editor). There are template
+control sections. However, we've figured out an easy way to put the
+control sections in the HTML content, not inside tags or attributes
+(even when attributes need to be controlled by the data stream). 
+
+
+What about arbitrary depth relationships? Imagine trees of structs
+that contained other trees of structs with depths of hundreds,
+thousands, or millions. How can a programmer cope with records with
+posibly billions of columns whose contents are known only at runtime?
+The answer is another of Noah's intuitive leaps. All such
+situations are relations of algorithmic construction.
+
+For example, a complete geneologic tree of the human race for the last
+6000 years would be an immensely complicated graph. Naive first normal
+would make every person their own column, devoting rows to each set of
+relationships.  Instead we can create a person column and then a
+column (or columns) relating this person to the global structure.
+
+Deft has a function called dcc, short for declare control column.
+It populates a row with strings which embody this row's ordered and
+participatory relationship with all other rows on some
+relationship. When you combine dcc with recursive functions, a small
+handfull of columns can represent massive, deep, and arbitrary
+nestedness with no more handles for the programmer to juggle then any
+other technique.
+
+http://wwwipd.ira.uka.de/~prechelt/Biblio/jccpprtTR.pdf
+comparison of seven languages
+http://www.flownet.com/gat/papers/lisp-java.pdf
+lisp vs java
+http://www.theadvisors.com/langcomparison.htm
+table comparing languages note high score for SQL and spreadsheets
+

@@ -1,0 +1,239 @@
+Table of Contents
+- Introduction
+- Assumptions
+- Components
+- Create databases
+- Load the graph and states
+- Run the example
+
+Introduction
+------------
+
+The demo is an FAQ database. The example is a tool to create and edit
+FAQs. If you understand this example, adding Deft based end user FAQ
+search to your web site should be trivial (it would consist almost
+entire of a modified draw_all.deft and associated HTML).
+
+You'll need Apache as well as the usual other required packages for
+Deft (Perl, Postgres).
+
+Before starting this demo, you should follow all the instructions in
+the main install.txt, and be able to run the cars.deft example
+script. Make sure there are no log file entries. Change directory to
+the Deft installation, and cat the error logs:
+
+cat err* /tmp/err*
+
+No log files is good.
+
+Assumptions
+-----------
+
+The instructions will make some assumptions. Substitute your real
+world values for things like user name (logname) hostname, passwords,
+etc.
+
+logname: mst3k
+hostname: dbdemo
+Deft installation directory: /home/mst3k/public_html/deft
+faqdemo directory: /home/mst3k/public_html/deft/faqdemo
+
+
+Components
+----------
+
+There are at least 3 components in a Deft/state machine driven web site:
+
+- graph (e.g. a directed graph, n-way tree)
+- Deft scripts
+- HTML templates
+
+Sites will normally be database driven, so you'll have a database as
+well. It is possible to have a Deft web site without state
+machine. The database is required for Deft config, but is it possible
+to have a web site that gets its data from files. 
+
+The state machine confers a great deal of ease by handling the site's
+workflow. Databases on Linux have become so easy to set up and
+administer that they are essentially simpler than any file based
+alternative.
+
+The state machine is controlled by a graph (the word "state" will only
+be used here in a generic sense). The graph source file is
+faqdemo.graph. It describes the edges of a directed graph (an n-way
+tree). Nodes in the graph (tree) are implicit as a points where edges
+connect. The first column in faqdemo.graph are labels only. These
+labels have the same name as edges only for legibility (associated
+naming).
+
+The second column in faqdemo.graph are tests. Any test in "" is a
+variable name. Non-zero is true. Other names are functions which must
+correspond to a Deft script. By running the test, we "traverse" the
+edge. If the test is true or returns true, we go to the label in the
+third column. 
+
+The third column is only a label corresponding to the first
+column. Labels are run in the order they appear in the file. It is
+typical to have several labels grouped together. The machine will
+start with the first of these labels and attempt to traverse its edges
+(e.g. by testing the variable named as the edge, or running the script
+named in the edge).
+
+Scripts are named only by the stem of the name (the part before the
+dot). "draw_all" corresponds to "draw_all.deft". 
+
+The state machine runs until it comes to a third column label preceded
+by "wait". The next state is always the third column label, but in the
+case of a "wait", stop the machine for now. The variable "next_node"
+in the HTML carries the state. 
+
+The Deft scripts are required to be in the same directory as the
+graph. It is vastly more convenient to have the HTML templates in the
+same directory as well.
+
+Deft scripts used as tests in edges must return true or false. I have
+not tested the Deft API return functions, but I'm guessing that they
+work fine. They are return_col(), return_true(), and
+return_false(). If the return value of a Deft script is not specified,
+it defaults to true. return_col() will return 1 if  the value of its
+argument is true in the Perl sense (non-zero and defined). The
+argument to return_col() is a string containing the name of the
+variable i.e. return_col("var");
+
+Normally a Deft script named in the second column is doing some work,
+not being used as a test. In faqdemo.graph this is true for edit,
+save, draw_all, etc. where the state machine will run edit.deft,
+save.deft, or draw_all.deft. The HTML contains a number of form fields
+which are all made available to the Deft scripts automatically (and
+visa-versa).
+
+Notice in the graph, that when save is called, there isn't a "wait" in
+the third column. After save, the states are tested to see if the user
+wanted to "save and continue" (run edit) or "save" (run draw_all).
+
+HTML templates are explained in the Deft documentation. 
+
+Note that Deft itself (including machine.pl) can be installed in
+any web accessible directory where you have read/execute
+permissions. The graph, Deft scripts, and HTML are normally in a
+separate directory. When loaded, the graph saves its directory, and
+the machine changes to the graph's directory when it runs. This
+eliminates path confusion. This path independence helps eases the
+process of moving a development and/or test web site to the site's
+production host and/or directory. We'll add more features to support
+the development-production distinction in the future.
+
+Right now to have two totally distinct copies of a Deft-powered web
+site on the same server, hitting two distinct databases, you'd have
+to:
+
+- copy all the site files (i.e. faqdemo) to a different directory
+- change the graph name (first line of the graph file), 
+- change the database names in all the Deft scripts
+- load the production graph and states
+
+
+Create Databases
+----------------
+
+Follow the Postgres Notes instructions in the main install.txt.
+
+Create a database faqdemo. I suggest that you login as the
+Postgres user (postgres) and use the create_db command line utility.
+
+create_db faqdemo
+
+Create a user "faqdemo", and I use encrypted passwords. I run psql as
+the user postgres. For this example the password is "demopass"
+
+psql -U postgres template1
+(enter password)
+create user faqdemo with encrypted password 'demopass';
+\q
+
+Run psql as the user faqdemo and load the tables and data.
+
+psql -U faqdemo faqdemo
+(enter password)
+\i schema.sql
+\i data.sql
+\q
+
+Create entries in the Deft database for faqdemo. The only information
+in the Deft .config file is how to connect to the Deft database. All
+other configuration information is in the database.
+
+For this example, we'll assume that you are logged in as the user
+mst3k, and will be using this user for the entire Deft/demo.
+
+You need to create entries in tables deft_users, and
+deft_tables. These are our settings (substutitute your own)
+faqdemo database name: faqdemo
+faqdemo database password: demopass
+logname: mst3k
+hostname: dbdemo
+
+psql -U deft deft
+(enter deft database password)
+insert into deft_users (logname) values ('mst3k');
+insert into deft_tables
+ (db_canonical_name, db_name ,dbms,db_host,db_port, db_user ,db_password, du_fk)
+values ('faqdemo','faqdemo','Pg','dbdemo' ,5432 ,'faqdemo','demopass', 
+(select du_pk from deft_users where logname='mst3k'));
+\q
+
+Real Soon Now we'll have an admin tool for Deft's database entries.
+
+
+
+Load the graph and states
+-------------------------
+
+We'll assume that you are logged in as mst3k, etc.
+
+cd /home/public_html/deft/
+./load_graph.pl faqdemo/faqdemo.graph
+./load_states.pl faqdemo
+cat err* /tmp/err*
+(no log files is good)
+
+
+
+Run the example
+---------------
+
+
+Go to your web browser and enter a URL like:
+
+http://localhost/~mst3k/deft/machine.pl?ginfo=faqdemo
+
+You should get a web page of 13 FAQs, complete with buttons to create
+a new record, edit, and delete.
+
+The FAQ demo web site has a number of features. Delete has a
+confirming page. Edit has "Save and Continue" which lets you save the
+current FAQ and keep editing, as well as "Save" that takes you back to
+the main page. Every time you edit or save an FAQ the question and
+answer text boxes are resized by the script. Newlines (\n, line
+breaks) in the question and answer are automatically saved as two
+breaks <br><br>. HTML is allowed in the question and answer, however,
+some of it may be a bit odd. I know that <a href...>...</a> tags work
+fine. There are some image tags in at least one record, but I
+recollect that I created them with relative URLs, so they are almost
+certainly broken.
+
+The main page is a search based on do_search(). It supports search
+engine aritimetic. Use +term to force inclusion of term. Use -term to
+force exclusion of term. Use question:term and/or answer:term to only
+search for term in the question or answer field. "search phrase"
+forces a search for a whole phrase instead of a word. The wildcard *
+can appear anywhere in a term.
+
+The search term you are using is carried through the edit so you'll
+get the same record set after an edit. 
+
+Creating a new record may cause the search to only find the new
+record. 
+
+The default search for "baja", is controlled by draw_all.deft.
+

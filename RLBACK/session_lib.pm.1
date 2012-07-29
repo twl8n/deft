@@ -1,0 +1,1453 @@
+package session_lib;
+
+# $Id: session_lib.pm,v 1.46 2008/04/22 14:35:20 twl8n Exp $
+# Checkin with ci -zLT -m"" -l file
+
+# Exporter must be in @ISA. Dynaloader seems to be optional.
+@ISA = qw(Exporter);
+
+# subs we export by default
+@EXPORT = qw(err_stuff get_url version next_fasta get_db_handle commit_handle clean_db_handles
+	     load_average busy check_config untaint
+	     capture_file login process_template user_config app_config
+	     keep_one clean_session do_session touch_session check_cookie
+	     update_cookie safe_file init_progress_meter progress_meter multi_string 
+	     save_upload_file index_url email exists_message final_message 
+	     read_file write_log write_log2 write_log3 log2file daemon_log
+	     );
+
+# Subs we will export if asked. Currently we just export everything.
+# (Or do we? The next line is commented out.)
+#@EXPORT_OK = qw();
+
+# The "use" statemet and $VERSION seem to be required.
+use vars qw($VERSION);
+
+# Updated Nov 29 2006
+# ms_lims had an updated version 5.
+# cowpea has version 6.
+# This as improved config management, sql connection subs, etc.
+$VERSION = '8';
+
+
+# Don't move use strict up since some of the lines above
+# are not strict.
+use strict;
+use CGI;
+use DBI;
+
+my $EXP_TIME='+3600'; # one hour in seconds
+my %db_handles;
+
+# apr 20 2007 This needs to be changed to use default_db from .app_config
+# Fix later. It effects lots of code.
+# For now start using default_db in new code.
+my $default_alias = "omssa";
+
+
+# Get abs path so this works from cron and PBS
+# in dev and production areas
+use Cwd qw(abs_path getcwd);
+my $path = "";
+if ($ENV{vela_path})
+{
+    $path = $ENV{vela_path};
+}
+else
+{
+    $path = abs_path($0);
+    $path =~ s/(.*)\/.*/$1/;
+}
+
+# Called from sql libraries.
+# Write logs and die.
+# write_log3 is the new db resident logging routine.
+sub err_stuff
+{
+    my $dbh = $_[0];
+    my $sql = $_[1];
+    my $msg = $_[2];
+    my $dbname = $_[3];
+    my $caller = $_[4];
+
+    write_log3("vela", "db_error", "$dbname $msg $caller sql:$sql err:$dbh->err errstr:$DBI::errstr");
+    die "Routine: $caller $DBI::errstr\n";
+}
+
+
+# twl8n: This could be improved to work from command line
+# calls which might simplify testing.
+sub get_url
+{
+    my $protocol;
+    if ($ENV{SERVER_PROTOCOL} =~ m/http/i)
+    {
+	$protocol = "http://";
+    }
+    return "$protocol$ENV{HTTP_HOST}$ENV{SCRIPT_NAME}";
+}
+
+sub version
+{
+    return $VERSION;
+}
+
+
+# %rec has: full_header, trace_name, description, sequence
+# trace_name and description may be missing from some entries.
+
+# Use global $line_buffer to imitate static var.
+# If we put this in a local block would need to put this in a BEGIN block
+# (which might not be so bad).
+my $line_buffer = "";
+sub next_fasta
+{
+    my $in = $_[0];
+    my %rec;
+    my $seq;
+    if (! $line_buffer)
+    {
+	if (! ($line_buffer = <$in>) )
+	{
+	    return undef;
+	}
+    }
+
+    # Make sure we have a fasta header line. If so, then attempt
+    # to get a trace_name and description separated by \s+
+
+    my $header_line;
+    if ($line_buffer =~ m/^\>(.*)/)
+    {
+	$header_line = $1;
+    }
+    else
+    {
+	print "Bad header:$line_buffer. Exiting.\n";
+	exit(1);
+    }
+    $rec{full_header} = $header_line;
+
+    if ($header_line =~ m/(.*?)\s+(.*)/)
+    {
+	$rec{trace_name} = $1;
+	$rec{description} = $2;
+    }
+    else
+    {
+	$rec{trace_name} = $header_line;
+	$rec{description} = "";
+    }
+
+    # Remove, trim whitespace on the trace_name.
+    # Clean illegal chars from trace_name but do not warn.
+    # Save the orig string so it can be searched in the fasta file.
+    # Count and keep track of illegal chars in the trace_name.
+    # Change illegals to _ do not warn, and keep processing.
+    
+    $rec{trace_name} =~ s/^\s+//;
+    $rec{trace_name} =~ s/\s+$//g;
+    
+    my $illegal_char = "";
+    my $orig = $rec{trace_name};
+    while ($rec{trace_name} =~ s/([^A-Za-z0-9\-_|.])/_/)
+    {
+	$illegal_char .= $1;
+    }
+
+    if ($illegal_char)
+    {
+	# print "In entry $orig\nFound illegal char(s): $illegal_char\n";
+    }
+    
+    $line_buffer = "";
+    while($line_buffer !~ m/^\>/)
+    {
+	$seq .= $line_buffer; # keep newline
+	if (! ($line_buffer = <$in>) )
+	{
+	    last;
+	}
+    }
+
+    $rec{sequence} = $seq;
+    return \%rec;
+}
+
+
+# prints status messages during a run
+
+sub run_status
+{
+    my $start = $_[0]; # start time in seconds since the epoch
+    my $xx = $_[1];    # number of iterations completed
+    my $total = $_[2]; # total number of iterations
+    my $interval = $_[3]; # How often to print the status message
+
+    if (($xx % $interval) == 0  || $xx == 1)
+    {
+	my $end = time();
+	my $secs_per_rec = ($end - $start)/($xx);
+	my $est_secs = $secs_per_rec * $total;
+	$est_secs = $est_secs - ($end-$start);
+	
+	printf("Finished $xx recs. Secs/rec: %4.4f Est. complete in %2.2d:%2.2d:%2.2d\n",
+	       $secs_per_rec,
+	       ($est_secs/3600),
+	       ($est_secs % 3600)/60,
+	       ($est_secs%60));
+    }
+}
+
+
+
+# Transactions must be enabled for some of the code to work.
+# Transactions are explicitly enabled by setting AutoCommit to zero.
+# We always use a tcp connection, even to the localhost,
+# so we always need the host name and port.
+
+# MySQL ignores all the args except the connect string. 
+# The MySQL connection failed unless the user and password were in the connect string.
+# The Postgres driver conforms to the DBI documentation, and therefore requires
+# the user and password arguments.
+
+sub get_db_handle
+{
+    my $db_alias = $_[0]; # The name is an alias. See file .app_config
+    if (! $db_alias)
+    {
+	my $str = sprintf("%s $0 session_lib.pm get_db_handle() must have an alias.", (caller(0))[3]);
+	die "$str\n";
+    }
+
+    if (! exists($db_handles{$db_alias}))
+    {
+	my %cf = app_config($db_alias);
+	
+	my %vars;
+	if (exists($cf{$db_alias}))
+	{
+	    ($vars{db_name},
+	     $vars{dbms},
+	     $vars{db_host},
+	     $vars{db_port},
+	     $vars{db_user},
+	     $vars{db_password}) = split('\s+', $cf{$db_alias});
+	    
+	    $vars{alias} = $db_alias;
+
+	    if (! $vars{db_name})
+	    {
+		die "Missing db info for alias:$db_alias from config:$cf{app_config}\n";
+	    }
+	}
+	else
+	{
+	    die "No record for database $db_alias in $cf{app_config}.\n";
+	}
+
+	my $dbargs = {AutoCommit => 0, PrintError => 1};
+	my $connect_string =
+	    sprintf("dbi:%s:dbname=%s;host=%s;port=%s;user=%s;password=%s",
+		    $vars{dbms},
+		    $vars{db_name},
+		    $vars{db_host},
+		    $vars{db_port},
+		    $vars{db_user},
+		    $vars{db_password});
+
+	$db_handles{$db_alias} =  DBI->connect($connect_string,
+					       $vars{db_user},
+					       $vars{db_password},
+					       $dbargs);
+
+	$connect_string =~ s/$vars{db_password}/*******/g;
+	if ($DBI::err)
+	{
+	    my $str = sprintf("%s Couldn't connect to $vars{db_name}", (caller(0))[3]);
+	    die "$str\n";
+	}
+    }
+    # write_log3('vela', 'db_error', "get_db_handle ok");
+    return $db_handles{$db_alias};
+    my $quiet_warnings = $DBI::err;
+}
+
+sub commit_handle
+{
+    my $db_alias = $_[0];
+    if (! $db_alias)
+    {
+	$db_alias = $default_alias;
+    }
+    if (exists($db_handles{$db_alias}))
+    {
+	my $dbh = $db_handles{$db_alias};
+	$dbh->commit();
+    }
+    else
+    {
+	die "Don't have a db handle alias $db_alias\n";
+    }
+}
+
+
+
+# This cleans all db handles.
+sub clean_db_handles
+{
+    foreach my $key (keys(%db_handles))
+    {
+	my $dbh = $db_handles{$key};
+        $dbh->disconnect();
+	delete($db_handles{$key});
+    }
+}
+
+# This hasn't been tested. Called from busy() below
+# on non-PBS systems.
+sub load_average
+{
+    my $temp = `uptime`;
+    $temp =~ m/load average:\s+(.*?),/;
+    return $1;
+}
+
+
+# Requires qstat, qstat_args, max_launch
+sub busy
+{
+    my %cf = app_config();
+    check_config(\%cf, "qstat,qstat_args,max_launch");
+
+    if (-e "$cf{qstat}")
+    {
+	my $total_jobs = -1;
+	my $running = -1;
+	my $queued = -1;
+	my $temp = `$cf{qstat} $cf{qstat_args}`;
+	
+	if (0)
+	{
+	    # PBS queue depends on total jobs (including E) not just running and queued.
+	    if ($temp =~ m/total_jobs = (\d+)/)
+	    {
+		$total_jobs = $1;
+	    }
+	    # Trap failures of qstat or the regex
+	    if ($total_jobs == -1)
+	    {
+		my $date = localtime();
+		write_log("$0 $date error Can't launch. Invalid value: t:$total_jobs");
+		write_log("$0 $date error qstat responded:\n$temp");
+		return 0;
+	    }
+	}
+	else
+	{
+	    # In the old days we mistakenly only counted running and queued jobs.
+	    if ($temp =~ m/Running:(\d+)/s)
+	    {
+		$running = $1;
+	    }
+	    if ($temp =~ m/Queued:(\d+)/s)
+	    {
+		$queued = $1;
+	    }
+	    
+	    # Trap failures of qstat or the regexes
+	    if ($running == -1 || $queued  == -1)
+	    {
+		print "Can't launch. Invalid values: r:$running q:$queued\n";
+		print "qstat responded:\n$temp\n";
+		return 0;
+	    }
+	    $total_jobs = $running + $queued;
+	}
+	my $num_to_launch = $cf{max_launch} - $total_jobs;
+	if ($num_to_launch <= 0)
+	{
+	    $num_to_launch = 0;
+	}
+	return $num_to_launch;
+    }
+    else
+    {
+	# This is legacy(?) code for non-PBS. It doesn't work as it should.
+	if (load_average() > 1.00)
+	{
+	    return 0; # Don't launch any more jobs
+	}
+	return 1; # Only launch one job 
+    }
+}
+
+
+# Use this to verify that the config we've read has the minimum 
+# required values.
+# usage:
+# check_config(\%cf, "name1,name2,name3");
+
+sub check_config
+{
+    my %cf = %{$_[0]};
+    my $str = $_[1];
+    
+    my @list = split(',', $str);
+    foreach my $item (@list)
+    {
+	if (!exists($cf{$item}))
+	{
+	    print "$0 error Missing required config: $item\n";
+	    print "app_config:$cf{app_config}\n";
+	    exit(1);
+	}
+    }
+}
+
+
+# Make strings safe for exposure to the command line. 
+# Allow only a minimal "file name" and "directory name" compatible set.
+
+
+sub untaint
+{
+    my $var = $_[0];
+    $var =~ s/[^A-Za-z0-9\.\_\-\/]//g;
+    return $var;
+}
+
+# Capture incoming file by moving it (cp followed by unlink) into a private system directory.
+# This subroutine is derived from ms_lims/cmlib.pl sub capture_file.
+# Any processing of multi-select CGI menus has to be done before calling capture_file.
+# Require full path on the orig.
+
+sub capture_file
+{
+    my %cf = %{$_[0]}; # expecting cp_exe, unlink_exe, chmod_exe
+    my $orig = $_[1];
+    my $dest_dir = $_[2];
+    my $comment = $_[3];
+
+    my $stem;
+    my $suffix;
+    if ($orig =~ m/.*\/(.*)(\..*)/)
+    {
+	$stem = $1;
+	$suffix = $2; # includes leading dot
+    }
+    else
+    {
+	die "Can't understand file name: $orig\n";
+    }
+    
+    my $fi_pk                = main::sql_insert_file(0, $dest_dir, $orig, $comment);
+    my $dest_short_name      = "$stem\_$fi_pk$suffix";
+    my $dest		     = "$dest_dir/$dest_short_name";
+    
+    # cp the file so the ownership will change.
+    # remove the original, then chmod destination
+    
+    $orig = untaint($orig);
+    $dest = untaint($dest);
+    
+    my $temp = `$cf{cp_exe} $orig $dest 2>&1`;
+    
+    if (-e $dest)
+    {
+	`$cf{unlink_exe} $orig`;
+	`$cf{chmod_exe} 0644 $dest`;
+    }
+    else
+    {
+	die "Failed to copy\norig:$orig\ndest:$dest.\n$temp\n";
+    }
+    main::sql_update_file($fi_pk, $dest_short_name);
+    return ($dest_short_name, $fi_pk);
+}
+
+
+# Someday the login could be more complex, i.e. we start using a real
+# session.  twl8n apr 22 2008 Add alternatives as a workaround for
+# broken OSX Leopard.  Do not use database (Vela) logging here since
+# this sub is called from the Vela logging facility. If this is
+# broken, Vela won't be able to write log messages.
+
+sub login
+{
+    if (exists($ENV{REMOTE_USER}))
+    {
+        return $ENV{REMOTE_USER};
+    }
+
+    my $username = `/usr/bin/id -un`;
+    chomp($username);
+
+    # If the username is all numeric (as with the apparent bug in OSX)
+    # then try the somewhat unreliable env var LOGNAME.
+    if ($username =~ m/^\d+$/)
+    {
+	if (exists($ENV{LOGNAME}))
+	{
+	    return $ENV{LOGNAME};
+	}
+	elsif (exists($ENV{USER}))
+	{
+	    return $ENV{USER};
+	}
+	else
+	{
+	    die "Cannot get name of user\n";
+	}
+    }
+
+    return $username;
+}
+
+
+# Perform some common substitutions on templates.
+#
+# We have to read the file because HTML::Template doesn't grok
+# URI encoded < and > which are necessarily encoded by HTML editors
+# inside other tags and attribute values.
+
+sub process_template
+{
+    my $template_text = read_file($_[0]);
+    $template_text =~ s/\&lt\;/</g;
+    $template_text =~ s/\&gt\;/>/g;
+    $template_text =~ s/\%3C/</ig;
+    $template_text =~ s/\%3E/>/ig;
+    $template_text =~ s/\%20/ /g;
+    $template_text =~ s/\%21/\!/g;
+    $template_text =~ s/(\S)\-\-\>/$1 -->/g; # HTML::Template requires space before -->
+    
+    # 
+    # Something eats " so doing the substitution here
+    # may not help. The solution is to just dispense with the "" around
+    # HTML::Template tmpl_var variable names.
+    # 
+    $template_text =~ s/(\%22)/\"/g;
+
+    return $template_text;
+}
+
+
+# This is called for config that is instance specific, i.e. a specific
+# time that an application is run. The user config replaces the command line
+# arguments. The args for omssacl can be very long, so it makes sense to 
+# store them in the db or in a file.
+# See clwrapper.pl
+
+sub user_config
+{
+    my $file_name = $_[0];
+    my $single_return = $_[1];
+
+    my $all = read_file($file_name);
+    my %cf;
+    my %cf_hide;
+    ac_core($all, \%cf, \%cf_hide);
+
+    # If we have been redirected to another config file,
+    # read it. Keep all the values. All kinds of things
+    # could go wrong with this (overwritten values, infinite loops, etc.).
+    # Users should be careful with multiple config files.
+
+    my $xx = 0;
+    while ($cf{redirect} && ($xx < 5))
+    {
+	$all = read_file($cf{redirect});
+	$cf{app_config} .= ", $cf{redirect}"; # save visited file names for debugging.
+	$cf{redirect} = "";
+	ac_core($all, \%cf, \%cf_hide);
+	$xx++;
+    }
+
+    if ($single_return)
+    {
+	foreach my $key (keys(%cf_hide))
+	{
+	    if ($key ne $single_return &&
+		$key ne "app_config")
+	    {
+		delete($cf_hide{$key});
+	    }
+	}
+
+	return %cf_hide;
+    }
+    else
+    {
+	return %cf;
+    }
+}
+
+sub check_and_traverse
+{
+    my $ac_file = $_[0];
+    my $cf_hr = $_[1];
+    my $cf_hide_hr = $_[2];
+    my $ok_flag = 0;
+    
+    if (-e $ac_file)
+    {
+	my $all = read_file($ac_file); 
+	# save visited file names for debugging.
+	$cf_hr->{app_config} = "$ac_file";
+	ac_core($all, $cf_hr, $cf_hide_hr);
+	$ok_flag = 1;
+    }
+
+    my $xx = 0;
+    while ($cf_hr->{redirect} && ($xx < 5))
+    {
+	my $all = read_file($cf_hr->{redirect});
+	# save visited file names for debugging.
+	$cf_hr->{app_config} .= ", $cf_hr->{redirect}";
+	$cf_hr->{redirect} = "";
+	ac_core($all, $cf_hr, $cf_hide_hr);
+	$xx++;
+    }
+    return $ok_flag;
+}
+
+
+# Note 3.
+# After going through much testing for substituting variables into 
+# template text for another application we created the following regex.
+# The complicated looking regex with the eval flag will
+# work for all variables that exist in the hash, understands beginning
+# and end of lines, variables that contain numbers (and underscore),
+# and it should be fast and efficient. It also supports better debugging and 
+# than the alternatives (not shown here). The second regex handles octal
+# character encoding, which is very handy in any template.
+
+# app_config() takes an optional single arg. This clearly separates sensitive
+# values from everything else. If someone doesn't ask for a particular hidden value,
+# then no hidden values are returned.
+
+# Environment variable APP_CONFIG overrides user .app_config
+# Always read $path/.app_config if it exists.  Read .app_config in
+# program directory and ./ but since ./ is read last, it's values
+# will overwrite. If we have been redirected to another config
+# file, read it (up to 5 redirects). Keep all the values from all
+# the redirects. All kinds of things could go wrong with this
+# (overwritten values, infinite loops, etc.).  Users should be
+# careful with multiple config files. Local user .app_config will
+# over write anything in the system .app_config. Note that the
+# presence of an $ENV{APP_CONFIG} will prevent the user
+# .app_config from being used.
+
+sub app_config
+{
+    my $single_return = $_[0];
+    my %cf;
+    my %cf_hide;
+    my $ok_flag = 0;
+
+    # 04 mar 2008 Add a mode where only one "master" .app_config is read.
+    # Up to 5 redirect are always read, if available.
+    if (defined($main::ac_check_one) && $main::ac_check_one)
+    {
+	if ($ENV{APP_CONFIG})
+	{
+	    $ok_flag = check_and_traverse($ENV{APP_CONFIG}, \%cf, \%cf_hide);
+	}
+	elsif ( -e "$path/.app_config")
+	{
+	    $ok_flag = check_and_traverse("$path/.app_config", \%cf, \%cf_hide);
+	}
+	elsif (-e "./.app_config")
+	{
+	    $ok_flag = check_and_traverse("./.app_config", \%cf, \%cf_hide);
+	}
+    }
+    else
+    {
+	# The existing code checks the $path/.app_config with redirects
+	# and then one of the ENV or ./.app_config (but not both). Redirects were
+	# not checked for this second case, and that bug is fixed here even though
+	# the "only one" feature is still here.
+	if ( -e "$path/.app_config")
+	{
+	    $ok_flag = check_and_traverse("$path/.app_config", \%cf, \%cf_hide);
+	}
+	if ($ENV{APP_CONFIG})
+	{
+	    $ok_flag = check_and_traverse($ENV{APP_CONFIG}, \%cf, \%cf_hide);
+	}
+	elsif (-e "./.app_config")
+	{
+	    $ok_flag = check_and_traverse("./.app_config", \%cf, \%cf_hide);
+	}
+    }
+
+#     my	$fn_two = "./.app_config";
+#     $fn_two = abs_path($fn_two);
+#     if ($fn_one ne $fn_two && -e $fn_two)
+#     {
+# 	my $all = read_file($fn_two);
+# 	$cf{app_config} .= ", $fn_two"; # save visited file names for debugging.
+# 	ac_core($all, \%cf, \%cf_hide);
+# 	$ok_flag = 1;
+#     }
+#     my $xx = 0;
+#     while ($cf{redirect} && ($xx < 5))
+#     {
+# 	my $all = read_file($cf{redirect});
+# 	$cf{app_config} .= ", $cf{redirect}"; # save visited file names for debugging.
+# 	$cf{redirect} = "";
+# 	ac_core($all, \%cf, \%cf_hide);
+# 	$xx++;
+#     }
+
+    if (! $ok_flag)
+    {
+	print "Cannot find .app_config\n";
+	write_log("$0 Error: Cannot find .app_config");
+	exit(1);
+    }
+
+    # If we have a single_return, get it from the hide hash,
+    # clear out everything except the asked for field and "app_config"
+    # and return the hide hash instead of the usual %cf.
+
+    if ($single_return)
+    {
+	if (! exists($cf_hide{$single_return}))
+	{
+	    my $output = "$0 app_config:\"$single_return\" not in \"hide\" for $cf_hide{app_config}\nkeys\n";
+	    foreach my $key (keys(%cf_hide))
+	    {
+		$output .= "$key\n";
+	    }
+	    die "$output";
+	}
+
+	foreach my $key (keys(%cf_hide))
+	{
+	    if ($key ne $single_return &&
+		$key ne "app_config")
+	    {
+		delete($cf_hide{$key});
+	    }
+	}
+
+	return %cf_hide;
+    }
+    else
+    {
+	return %cf;
+    }
+}
+
+
+# Used by clwrapper.pl and other code with special needs for config files.
+# This keeps the one non-null value of a group of config options and deletes the rest of
+# the options from the hash reference. This is used in wrapping omssacl
+# where one and only one output file arg is required. We want to clean
+# up the extraneous (null) output args, but keep the single good arg (good
+# because it has a non-null value).
+
+sub keep_one
+{
+    my $hr = $_[0];
+    my $keep_us = $_[1];
+     
+    my @keepers = split(",", $keep_us);
+    my $signal_count = 0;
+    my $value = undef;
+    foreach my $item (@keepers)
+    {
+	if (exists($hr->{$item}) && length($hr->{$item}) > 0)
+	{
+	    $signal_count++;
+	    $value = $hr->{$item};
+	}
+	else
+	{
+	    delete($hr->{$item});
+	}
+    }
+    if ($signal_count > 1)
+    {
+	die "Too many properties are defined in list \"$keep_us\". Count:$signal_count\n";
+    }
+    return $value;
+}
+
+# Not exported.
+sub ac_core
+{
+    my $all = $_[0];
+    my $cf_ref = $_[1];
+    my $cf_hide = $_[2];
+
+
+#     print "acdump\n";
+#     foreach my $key (keys(%{$cf_hide}))
+#     {
+# 	print "$key:$cf_hide->{$key}\n";
+#     }
+#     print "\n";
+
+
+    my %subs; #hash of things we are willing to substitute into config values.
+    $subs{login} = login();
+    
+    # Break the file into lines. This means that a value cannot contain newlines.
+    # If you need newlines, you'll need a more interesting parsing regex.
+
+    my @lines;
+    while($all =~ s/^(.*?)\n//)
+    {
+	my $line = $1;
+	# Do not convert escaped octal sequences back to characters
+	# until parsing is complete. Otherwise \075 "=" breaks the parser.
+	
+	$line =~ s/\#(.*)//g; 	# remove comments to end of line
+	$line =~ s/\s*=\s*/=/g;	# remove whitespace around = 
+	$line =~ s/\s+$//g;	# remove trailing whitespace
+	$line =~ s/^\s+//g;	# remove leading whitespace
+	
+	# If there is anything left, push it.
+	if ($line)
+	{
+	    push(@lines, $line);
+	}
+    }
+
+    # The last line (or fragment), if there is one.
+    if ($all)
+    {
+	$all =~ s/\#(.*)//g; 	# remove comments to end of line
+	$all =~ s/\s*=\s*/=/g;	# remove whitespace around = 
+	$all =~ s/\s+$//g;	# remove trailing whitespace
+	$all =~ s/^\s+//g;	# remove leading whitespace
+	
+	push(@lines, $all);
+    }
+
+    foreach my $line (@lines)
+    {
+	# See Note 3 above.
+	$line =~ s/(?<!\\)(\$([\w\d]+))(?!=\w)(?!=\d)(?!=\z)/exists($subs{$2})?$subs{$2}:$1/eg;
+
+	$line =~ m/^((.*)=(.*))$/;
+	my $name = $2;
+	my $value = $3;
+
+	$name =~ s/\\([0-9]{3})/chr(oct($1))/eg;
+	$value =~ s/\\([0-9]{3})/chr(oct($1))/eg;
+	$cf_ref->{$name} = $value;
+    }
+    
+    if (exists($cf_ref->{hide}))
+    {
+	my @hide_list = split('\s+', $cf_ref->{hide});
+	foreach my $hide (@hide_list)
+	{
+	    # Only overwrite if $cf_ref has a value!
+	    if (exists($cf_ref->{$hide}))
+	    {
+		$cf_hide->{$hide} = $cf_ref->{$hide};
+		delete($cf_ref->{$hide});
+	    }
+	}
+    }
+
+    # Hide needs a copy of the debug info too.
+    # Hide does not need, nor does it get a copy of full_text (below).
+
+    $cf_hide->{app_config} = $cf_ref->{app_config};
+
+
+
+    # Each .app_config can supply a list of options to include in the
+    # full_text field. This field's purpose is as record keeping only
+    # (audit trail).  NOTE: This code must come after the hide values
+    # have been deleted so that users cannot accidentally put hide
+    # values into full_text output. Normal users might see full_text
+    # so don't put anything private in there.
+
+    if ($cf_ref->{full_text})
+    {
+	my @full_text_keys = split('\s+', $cf_ref->{full_text});
+	my $tween = "";
+	foreach my $key (@full_text_keys)
+	{
+	    $cf_ref->{full_text} .= "$tween$cf_ref->{$key}";
+	    $tween = "\n";
+	}
+    }
+}
+
+
+# remove anything from session that is twice as old as the expiration time.
+sub clean_session
+{
+    my $dbh = $_[0];
+    my $clean_exp = $EXP_TIME * 2; # Double it to be safe
+    my $exp_secs = `date --date="$clean_exp seconds ago" +%s`;
+    chomp($exp_secs);
+    my $sth = getq($dbh, "clean_session");
+    $sth->execute($exp_secs);
+}
+
+
+# Only call do_session() from a 2 script (i.e. insert_gene2.pl) where
+# we are collecting data, but things are not right. If we can't write the
+# data into one of the real tables, call do_session() to save all the hash values. 
+# It also deletes session data for non-existant hash keys (presumably from 
+# some other web page.)
+#
+# insert new records
+# update existing records
+# delete non-existant records (which might be things like checkboxes which are now null)
+# Unfortunately, delete may not apply to all circumstances, and then we'll have to 
+# modify this sub. That has already happened once with 'login'.
+
+sub do_session
+{
+    my $dbh = $_[0];
+    my $uid = $_[1];
+    my %ch = %{$_[2]};
+    my %found;
+    my $seconds = `date +%s`;
+    chomp($seconds);
+    #
+    # Never write the cleartext password to the db.
+    #
+    delete($ch{password}); 
+
+    my $sth = getq($dbh, "value_name");
+    my $sth_insert = getq($dbh, "insert_session");
+    my $sth_update = getq($dbh, "update_session");
+    my $sth_delete = getq($dbh, "delete_value_name");
+
+    $sth->execute($uid) || die "execute value_name\n$DBI::errstr\n";
+    while((my $param_value, my $param_name) = $sth->fetchrow_array())
+    {
+	if (exists($ch{$param_name}))
+	{
+	    $sth_update->execute($seconds, $ch{$param_name}, $param_name, $uid) || die "execute update_session\n$DBI::errstr\n";
+	}
+	else
+	{
+	    # The SQL won't delete 'login';
+	    $sth_delete->execute($param_name, $uid) || die "execute delete_value_name\n$DBI::errstr\n";
+	}
+	$found{$param_name} = 1;
+    }
+    
+    foreach my $key (keys(%ch))
+    {
+	if (! exists($found{$key}))
+	{
+	    $sth_insert->execute($seconds, $ch{$key}, $key, $uid) || die "insert_session dies.\n$DBI::errstr\n";
+	}
+    }
+}
+
+
+# Update the seconds on all the session records for $uid
+
+sub touch_session
+{
+    my $dbh = $_[0];
+    my $uid = $_[1];
+    my $sth = getq($dbh, "value_name");
+    my $sth_update = getq($dbh, "update_session");
+    my $seconds = `date +%s`;
+    chomp($seconds);
+
+    $sth->execute($uid) || die "value_name dies.\n$DBI::errstr\n";
+    while((my $param_value, my $param_name) = $sth->fetchrow_array())
+    {
+	$sth_update->execute($seconds, $param_value, $param_name, $uid) || die "update_session dies.\n$DBI::errstr\n";
+    }
+}
+
+# If the cookie has expired in the browser, then we won't have a
+# $cookie_value, and the user will be logged off.
+# If we do have a cookie, make sure the login is valid, and touch the timestamp
+# on all the user's session records.
+#
+# If the login is not valid (empty string), the user will be logged off.
+#
+# We are not currently checking the timestamp on the login record.
+# If the user hacked their cookie to never expire, the only effect would be
+# that they might never log off. However, their old session records would be
+# cleaned the next time someone else logged in.
+
+sub check_cookie
+{
+    my $dbh = $_[0];
+    my $cookie_value = $_[1];
+    my $login;
+    if (length($cookie_value) != 0)
+    {
+	my $sth = getq($dbh, "check_login");
+	$sth->execute($cookie_value) || die "check_login dies.\n$DBI::errstr\n";
+	($login) = $sth->fetchrow_array();
+	$sth->finish();
+	touch_session($dbh, $cookie_value);
+    }
+
+    my $len = length($login);
+    
+    if (length($cookie_value) == 0 || length($login) == 0)
+    {
+	my $url = index_url(0);
+	$url .= "/login.pl";
+	print "HTTP_PRAGMA: no-cache\n";
+	print "HTTP_CACHE_CONTROL: no-cache\n";
+	print "Location: $url\n\n";
+
+	commit_handle();
+	clean_db_handles();
+
+	$dbh->disconnect();
+	exit(); # Yikes! (but necessary)
+    }
+    return $login;
+}
+
+# Set the expiration time
+
+# Note 2.
+# If Apache didn't do the cookie, make one just like it.
+# If the cookie expires, or the user deletes their cookies, we will 
+# get an http request without a cookie. In that case we could do something
+# goofy to force a page redraw (like a redirect with a counter just in case
+# the cookie doesn't show up) but that's not robust.
+# So, just create a cookie that is just like the Apache cookie.
+# The remote users IP address dot timestamp with nanoseconds
+# (chomp backtick returned values as usual)
+# The last 3 digits are always zero. Apache chops them off, so do we. 
+# Incidently, using an X instead of a dot helps debugging, and works just
+# fine.
+
+sub update_cookie
+{
+    my $cookie_value = $_[0];
+    if (length($cookie_value) == 0)
+    {
+	# See Note 2 above. 
+
+	$cookie_value = $ENV{REMOTE_ADDR} . ".";
+	$cookie_value .= `date +%s%N`;
+	chomp($cookie_value);
+	chop($cookie_value); 
+	chop($cookie_value);
+	chop($cookie_value);
+    }
+    my $cookie = CGI->cookie(-name=>'Apache',
+			     -value=>"$cookie_value",
+			     -expires=>$EXP_TIME # usually +1200 (seconds)
+			     );
+    return ($cookie_value,"Set-Cookie: $cookie");
+}
+
+
+# Return a unique file name, based on what is already on disk.
+# For nth file create sequential name.
+# i.e. turn a.dat into a_1.dat, a_2.dat, ...
+# The non _n file is the zeroth file.
+#
+# Keep the path separate. Check it, and return a unique filename for that 
+# path, but only return the file name, not path concatenated with file name.
+# 
+# Change all non-alphanumerics to underscore.
+# Allow . and -
+
+sub safe_file
+{
+    my $fn = $_[0];
+    my $dir = $_[1];
+    my $stem;
+    my $suffix;
+
+    # Can't pass in a full path due to the following regex,
+    # do the dir is a separate arg.
+
+    $fn =~ s/[^a-zA-Z0-9\.\-]/_/g; # change all non-alpha numerics to underscore
+
+    if ($fn =~ m/(.*)\.(.*)/)
+    {
+        $stem = $1;
+        $suffix = $2;
+    }
+    else
+    {
+        $stem = $fn;
+        $suffix = ".dat";
+    }
+
+    # Prepend the dir, then check for duplicate names.
+    # The non _n file is the zeroth file.
+
+    my $verified_fn = "$stem\.$suffix";
+    my $xx = 1;
+    while(-e "$dir/$verified_fn")
+    {
+        $verified_fn = "$stem\_$xx\.$suffix";
+        $xx++;
+    }
+
+    # Return file name with no path!
+
+    return $verified_fn;
+}
+
+
+my $rand_str="thisbetterbearandomboundarystring";
+
+sub init_progress_meter
+{
+    my $all = read_file("progress.html");
+    print "Content-type: multipart/x-mixed-replace;boundary=$rand_str\n\n";
+    print "--$rand_str\n\n";
+    return $all;
+}
+
+sub progress_meter
+{
+    my $all = $_[0];
+    my $file_bytes = $_[1];
+
+    # progress bar graphic and string var.
+    #my $p_orig = "<img src=\"7F44E1_spacer.jpg\" height=10 width=5>";
+    #my $p_str;
+    #$p_str = multi_string(100, $p_orig);
+    #$all =~ s/\$p_str/$p_str/;
+    
+    my $file_size = "";
+    if ($file_bytes > 1048576)
+    {
+	$file_size = sprintf("%d Mb", $file_bytes/1048576);
+    }
+    elsif ($file_bytes > 10240)
+    {
+	$file_size = sprintf("%d Kb", $file_bytes/1024);
+    }
+
+    $all =~ s/\$file_size/$file_size/;
+    $|= 1;     # Force a flush on every print for STDOUT. 
+    print "Content-type: text/html\n\n$all\n--$rand_str\n\n";
+}
+
+
+# What is this? Is it even used?
+sub multi_string
+{
+    my $factor = $_[0];
+    my $orig = $_[1];
+
+    my $result;
+    for(my $yy=0; $yy<$factor; $yy++)
+    {
+	$result .= $orig;
+    }
+    return $result;
+}
+
+
+# 2005-may-09 make the buffer size 10240 for binary files.
+#
+# 2004-12-13 Combines text and binary upload. By returning the correct file name
+# this also fixes a bug.
+#
+# Strip any path info that the browser may have prepended to the file name.
+# Apparently IE does this. I haven't seen it from Mozilla under Linux.
+# Make all filenames lowercase. 
+#
+# Remove carriage returns (^M, Windows line endings) from uploaded
+# text files.
+#
+# Mozilla won't render text/plain if there is a control character at byte 1024 or earlier.
+# Consider stripping non-carriage controls from uploaded .txt files in cellmig.
+# For now, change ^A to space.
+#
+# Note 1.
+# The file name in $ch_hr->{fn_key} has to be passed in un-changed
+# so we can get a filehandle from the CGI code. Therefore we can't
+# prepend the distination directory until a few lines down, and therefore
+# the destination directory needs to be passed in as a separate argument.
+
+sub save_upload_file
+{
+    my $qq = $_[0];
+    my $ch_hr = $_[1];
+    my $fn_key = $_[2]; # $ch_hr->{} hash key with file name.
+    my $dest_dir = $_[3]; # see note 1 above.
+    my $upload_type = $_[4];
+    my $message = "";
+
+    if (! exists($ch_hr->{$fn_key}) || (length($ch_hr->{$fn_key}) == 0))
+    {
+	# Nothing to do.
+	# Used to turn a bad filename into "". 
+	return;
+    }
+
+    my $fn_value = $ch_hr->{$fn_key};
+
+    my $filehandle = $qq->upload($fn_key);
+    my $f_hr = $qq->uploadInfo($filehandle);
+
+    $fn_value =~ s/(.*\\)//;
+    $fn_value = lc($fn_value);
+    my $fi_pk = main::sql_insert_file(0, $dest_dir, $fn_value, "uploaded file");
+
+    # Make the filename unique. tmp.txt becomes tmp_xxx.txt
+    # where xxx is the $fi_pk.
+    
+    $fn_value =~ s/(.*)\.(.*)/$1\_$fi_pk\.$2/; 
+    main::sql_update_file($fi_pk, $fn_value);
+    commit_handle();
+    clean_db_handles();
+
+    my $dest_file = "$dest_dir/$fn_value";
+
+    if ($upload_type eq 'text')
+    {
+	# Normal text file.
+
+	open (A_OUT,"> $dest_file") || die "Cannot open $dest_file for write.\n";
+	my $buffer;
+	while (my $bytesread=read($filehandle,$buffer,1024))
+	{
+	    $buffer =~ s/\015//sg;  # remove ^M
+	    $buffer =~ s/\001/ /sg; # change ^A to space.
+	    print A_OUT $buffer;
+	}
+	close(A_OUT);
+    }
+    elsif ($upload_type eq 'pta')
+    {
+	# Post translational analysis data file.
+	# Check the first line of the file. It must have 'peptide' or 'sequence' as part of
+	# column headers. If the text is present, we'll assume that it is a file header.
+
+        my $buffer;
+        my  $bytesread=read($filehandle,$buffer,1024);
+	if ($buffer !~ m/sequence|peptide/i)
+	{
+	    $message = "22x";
+	}
+	else
+	{
+	    open (A_OUT,"> $dest_file") || die "Cannot open $dest_file for write.\n";
+	    print A_OUT $buffer; # print (save) first line we read above!
+	    while (my $bytesread=read($filehandle,$buffer,1024))
+	    {
+		$buffer =~ s/\015//sg;  # remove ^M
+		print A_OUT $buffer;
+	    }
+	    close(A_OUT);
+	}
+    }
+    else
+    {
+	# Any other file, usually binary.
+	open (A_OUT,"> $dest_file") || die "Cannot open $dest_file for write.\n";
+	my $buffer;
+	my $total_bytes = 0;
+	while (my $bytesread=read($filehandle,$buffer,10240))
+	{
+	    print A_OUT $buffer;
+	    $total_bytes += $bytesread;
+	}
+	close(A_OUT);
+    }
+    $ch_hr->{message} .= $message;
+    return ($fn_value, $fi_pk);
+}
+
+sub index_url($)
+{
+    my $iflag = $_[0];
+    my $protocol = "http";
+    if (exists($ENV{HTTPS}))
+    {
+	$protocol = "https";
+    }
+    my $url = "$protocol://$ENV{HTTP_HOST}$ENV{REQUEST_URI}";
+    # 
+    # 2002-01-24 Tom:
+    # Fix this to return the base URL, and understand ~userid URLs
+    # Return the URL without the final file name, and without the trailing /
+    # 
+    if ($url =~ m/\/~/)
+    {
+	$url =~ s/(.*\/~.*)\/.*/$1/;
+    }
+    else
+    {
+	$url =~ s/(.*)\/.*/$1/;
+    }
+    if ($iflag)
+    {
+	$url .= "/index.pl";
+    }
+    return $url;
+}
+
+
+sub email
+{
+    my %info;
+    ($info{name}, $info{email}, $info{login}) = @_;
+    my %vars = config(); # see config.pl
+
+    $info{nextURL}  = "http://$vars{wwwhost}/$vars{wwwpath}";
+    $info{fromMail} = "nobody\@$vars{wwwhost}";
+    $info{ccMail}   = $vars{contact_email};
+
+    #
+    # I know it isn't an html file, but if I used anther extension,
+    # I'd have to modify the makefile. Later.
+    # 
+    my $email = readfile("admin_email.html");
+    $email =~ s/{(.*?)}/$info{$1}/g;
+
+    open (MAIL, '| /usr/lib/sendmail -t -oi');
+    print MAIL "$email\n";
+    close MAIL;
+}
+
+
+sub exists_message
+{
+    my $email = $_[0];
+    my $temp = <<EOS;
+The email: $email already exists in our contact database.\n
+Maybe you already have an account with us?\n
+If you believe that this is a mistake, please contact your Genex administrator
+to resolve the issue.
+EOS
+    return $temp;
+}
+
+sub final_message
+{
+    my $temp = "You have enter the following information:\n";
+    my $key;
+    foreach $key ( @_ ) {
+        $temp .= "$key\n";
+    }
+    
+    $temp .= "An email message containing the new login and password has been\n";
+    $temp .= "send to the address above.\n";
+    return $temp;
+}
+
+
+sub read_file
+{
+    my @stat_array = stat($_[0]);
+    if ($#stat_array < 7)
+      {
+        die "read_file: File $_[0] not found\n";
+      }
+    my $temp;
+
+    # It is possible that someone will ask us to open a file with a leading space.
+    # That requires separate args for the < and for the file name.
+    # It also works for files with trailing space.
+
+    open(IN, "<", "$_[0]");
+    sysread(IN, $temp, $stat_array[7]);
+    close(IN);
+    return $temp;
+}
+
+
+sub write_log
+{
+    my $fn = "./error.txt";
+
+    open(LOG_OUT, ">> $fn") || die "Cannot open log $fn\n";
+    print LOG_OUT "$_[0]\n";
+    close(LOG_OUT);
+    chmod(0660, $fn);
+}
+
+sub write_log2
+{
+    my $log_dir = $_[0];
+    my $message = $_[1];
+
+    if (! $log_dir || ! -d $log_dir || ! $message)
+    {
+	print "Error: write_log2 Missing log_dir or message\n";
+	exit(1);
+    }
+
+    my $fn = "$log_dir/error.txt";
+
+    open(LOG_OUT, ">> $fn") || die "Cannot open log $fn\n";
+    print LOG_OUT "$message\n";
+    close(LOG_OUT);
+    chmod(0660, $fn);
+}
+
+
+# The owner "daemon" must be in the vela db log_key table.
+# This must be called with the proper key.
+# The tag is always "daemon". 
+
+sub daemon_log
+{
+    my $vela_name = $_[0];
+    my $key = $_[1];
+    my $msg = $_[2];
+
+    my $tag = "daemon";
+
+    # Assume that the calling code has required sql_lib_vj.pl
+    # and therefore sql_insert_log() is in the main:: package.
+
+    my $success = main::sql_insert_log($vela_name, $tag, $key, $msg);
+    commit_handle($vela_name);
+    clean_db_handles();
+}
+
+
+sub write_log3
+{
+    my $vela_name = $_[0];
+    my $tag = $_[1];
+    my $msg = $_[2];
+
+    my $userid = login();
+
+    # Assume that the calling code has required sql_lib_vj.pl
+    # and therefore sql_insert_log() is in the main:: package.
+
+    my $success = main::sql_insert_log($vela_name, $tag, $userid, $msg);
+    commit_handle($vela_name);
+    clean_db_handles();
+}
+
+sub log2file
+{
+    my $fn = $_[0];
+    my $tag = $_[1];
+
+    my $userid = login();
+
+    my %cf = app_config();
+    check_config(\%cf, "vela_name");
+    
+    # Get the records and append them to the specified file.
+
+    main::sql_log2file($cf{vela_name}, $fn, $tag, $userid);
+    commit_handle($cf{vela_name});
+    clean_db_handles();
+}
+
+
+1;

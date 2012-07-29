@@ -1,0 +1,11 @@
+main:
+{
+    keep("save,continue,next,submit,faq_pk,findme,question,answer,keywords");
+    $question =~ s/([\000-\037]{4})/<br><br>/sig;
+    $answer =~ s/([\000-\037]{4})/<br><br>/sig;
+    $keywords =~ s/([\000-\037]{4})/<br><br>/sig;
+    $findme_encoded = $findme;
+    do_sql_simple("faqdemo","", "update faq set question='\$question',answer='\$answer',keywords='\$keywords' where faq_pk=\$faq_pk");
+}
+
+

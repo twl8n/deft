@@ -1,0 +1,5 @@
+main:
+{
+    keep("findme,faq_pk");
+    do_sql_simple("faqdemo","","update faq set valid=0 where faq_pk=\$faq_pk");
+}

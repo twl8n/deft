@@ -1,0 +1,51 @@
+ main:
+{
+    keep("findme,faq_pk");
+    do_sql_simple("faqdemo","","select * from faq where faq_pk=\$faq_pk and valid=1");    #dump_stream();
+    $test_text = $question;
+    calc_rows();
+    $qrows = $rows;
+
+    $test_text = $answer;
+    calc_rows();
+    $arows = $rows;
+
+    $test_text = $keywords; 
+    calc_rows();
+    $krows = $rows;
+
+    # use faq_pk for single record instead of creating dcc var
+    dcc("distinct_t", "faq_pk", [""], []);
+    $question =~ s/<p>|<br><br>/\n\n/sig;
+    $answer =~ s/<p>|<br><br>/\n\n/sig;
+    $keywords =~ s/<p>|<br><br>/\n\n/sig;
+    $findme_encoded = www_quote($findme);
+    # 
+    # Dual purpose template. In this instance don't insert.
+    # 
+    $insert = 0; 
+    render("","Content-type: text/html\n\n","edit_faq.html");
+}
+
+
+sub calc_rows
+{
+    # $test_text is input
+    if (! $test_text)
+    {
+	$rows = 30;
+	return;
+    }
+    $rows = 1; # zero is more correct, but would be div by zero error below.
+    while ($test_text =~ m/<p>|<br><br>/ig)
+    {	
+	$rows++;
+    }
+    $len = length($test_text);
+    $rows += $len/60;
+    $rows += ($rows*0.3);
+    $rows = sprintf("%d", $rows);
+    # $rows is the result.
+}
+
+

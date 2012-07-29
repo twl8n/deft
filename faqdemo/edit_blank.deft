@@ -1,0 +1,27 @@
+main:
+{
+    keep("findme,findme_encoded");
+    if (! $findme_encoded)
+    {
+	$findme_encoded = $findme;
+    }
+    #
+    # edit_faq.html uses faq_pk as the control column, and only
+    # records with a non-zero faq_pk will render.
+    #
+    $faq_pk = -1;
+    $qrows = 5;
+    $arows = 5;
+    $krows = 5;
+    $question = "";
+    $answer = "";
+    $keywords = "";
+    #
+    # edit_faq.html is a dual purpose template.
+    # It has a hidden var "insert" which we need to make true for a new record.
+    #
+    $insert = 1;
+    render("","Content-type: text/html\n\n","edit_faq.html");
+    # dump_stream();
+}
+

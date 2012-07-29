@@ -1,0 +1,140 @@
+
+<html>
+  <head>
+    <title></title>
+    <meta name="keywords" content="">
+    <meta name="description" content="">
+  </head>
+  <body>
+    <a href="./">Home</a><br>
+    <pre>
+
+This document describes implementation details of Deft, and is
+intended for programmers. This description is for the xinetd socket
+version of Deft. The full gridding version will be substantially
+different.
+
+Deft is implemented in Perl, and uses Perl's eval() to run Deft
+statements. 
+
+Each statement in the special routine main: is run in a separate
+process.  There are two types of Deft statements in main. 
+
+1) Deft API subroutines which are part of the Deft API library, and
+must conform to certain requirements. We'll explain more below, but
+Deft API functions must unwind each record, process the record, and
+rewind the completed record. Deft API routines may have internal state
+information.
+
+2) Non-main Deft subroutines are 'user written' subroutines in
+the user's Deft script. These are called from main, however, Deft
+knows they are user written and performs an unwind before calling the
+user subroutine for a single record, and then rewinds the result. It
+is impossible for user written subroutines to have state
+information. (see footnote 1.)
+
+
+
+There are a couple of important low level, internal subroutines which
+you should be aware of due to their importance in understanding the
+concepts and implementation of Deft.
+
+'rewind' is a non-API, low level internal function. It freezes
+(freeze() is part of the Storable Perl module) a special global hash
+'eenv' (execution environment), and writes the size in bytes to
+stdout, then writes frozen string to stdout.
+
+'unwind' is a non-API, low level, internal function which reads stdin
+for the number of bytes N.  Then it reads a string of N bytes length
+from stdin. The string is thawed, and assigned a special internal hash
+named 'eenv'.
+
+Each unwind-rewind pair is in a separate process, so that 'eenv'
+contains only one record, and this record is the current record being
+operated on by this process.
+
+Aside from stdin and stdout, processes have no idea of the existence
+of other processes.
+
+
+
+When Deft launches (deft.pl), the first phase is parsing the Deft
+script. The Deft subroutine main: is special. Each statment in main:
+will be a separate Deft process. The last statement to execute (the
+last statement in main:) is kept for execution by deft.pl. We'll
+explain why later. The rest of the statements are shoved into an array
+(and frozen?). This the end of the parse phase.
+
+The pre-execution (process chain creation) phase starts with Deft.pl
+opening a socket to port 9000 where xinetd is waiting to launch
+deftd.pl. The array of Deft statements is written to the stdin of
+deftd.pl. Having written the frozen array of statements, the first
+process, deft.pl, reverses stdin and stdout. The new process
+(deftd.pl) shifts the array (pulling off the last statement/element,
+making the array shorter). Then deftd.pl opens its stdout to xinetd,
+and the process continues. Each new process passes the ever-shorter
+array of Deft statements up the line, then reverses stdin and stdout.
+
+In this way a chain of instances (processes) of deftd.pl come into
+existence, each with one Deft statement. The final process evals its
+Deft statment, and rewinds the resulting record onto stdout. Remember,
+the direction of the sockets has changed, and data comes down the
+chain that the code went up. The final process (last process created,
+the first process to start eval'ing its Deft statement) is the only
+one that does not unwind. All the others iterate through an
+unwind-eval-rewind loop until no records remain.
+
+When each process has no more records to unwind, it exits.
+
+The original process in the chain (the first process created, deft.pl)
+prints the results of its Deft statement to stdout, not in frozen
+(rewind) form, but just as a plain, old string. Generally, the final
+statement is a template render call. The only process with stdout
+available to the user is the original process, and thus the original
+process must eval the last Deft statement. Since Deft might spawn
+processes across many machines, only the original process is
+guaranteed to be on the same machine as the user (or on the same
+machine as the CGI call if Deft is being used in a CGI context).
+
+
+
+The Deft data record has a very simple format. Fields (columns) in the
+record are named and stored symbolically. Values have Perl's weak type
+casting. Internal API subroutines store fields are elements of the
+hash eenv. For example, an API subroutine that runs a SQL select
+statement will collect the columns that resulted from the query and
+put each fetched value into an element of eenv with the same name as
+the corresponding database field. Each iteration of the API
+subroutines internal loop unwinds (filling eenv), performs a process
+that (probably) changes eenv, then rewinds (freezing eenv and sending
+it to the next process). The internal structure of API subroutines is
+standard procedural Perl. The power of Deft is that users invoke Deft
+API subroutines in a declarative context. Unwind and rewind are called
+inside API subroutines.
+
+In user written Deft subroutines, fields are any Perl scalar. Each
+element of the hash eenv is instantiated as a Perl scalar each time a
+user written subroutine is evaluated (via the $$var construct). After
+the subroutine is evaluated, all the scalars are put back into eenv
+and rewind is called. Turning eenv into scalars enables the Deft
+script to create new fields, and to use all of Perl's abilities to
+modify fields in the record. The action of the user written subroutine
+is applied to each record in the stream, with no state
+information. You could not write a 'sum' or 'count' user subroutine
+since there is no way to accumulate a running total. Unwind and rewind
+are called outside of user written subroutines.
+
+
+
+
+
+Footnotes
+
+1. Since Deft is open source, and since the API standards are
+relatively simple, it is possible for 'users' to add subroutines to
+the Deft API library. We'll consider these subroutines part of the
+Deft API (in a practical sense.)
+
+    </pre>
+  </body>
+</html>

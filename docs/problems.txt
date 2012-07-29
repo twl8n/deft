@@ -1,0 +1,74 @@
+This is a file of random comments and debugging hints for Deft 
+internal developers.
+
+C Noah says: undef var in stream should make var go away, or var gets
+null as value.
+
+Tom says: Can't make the var go away. This could result in records
+having different number of columns if a column were undef in some
+records and not in others. The only safe way to get rid of a column is
+a Deft API call. Right now we only have keep(), but we need something
+like drop_column().
+
+Noah says: Thats not a problem because perl auto-vivifys vars so if someone
+conditionally wipes out a variable and then references it in a row in which 
+it has been eliminated it will have the value '' which I'm fine with.
+
+C (Not necessary with new compile/getvars.) Fix set_eenv() to not set
+undefined vars. 
+
+C (No. Implement new user sub isolation and Deft in blocks.) Munge
+user subs. Make a my list of all vars in every subroutine to enforce
+no globals and no side effects. 
+
+C Ask if Noah can remember why the stupid file_name stuff in runt.pl, render() r_emit().
+This is a proper behavior of lamda and wye. Alternate template outputs from one stream
+should be accomplished by lambda'ing the stream.
+
+C (Noah says yes) Can errors go into $::eenv{warn} and get spewed to stdout?
+
+C Noah: Wait until we have operations on the agg column.
+dcc() won't aggregate when the var is zero. This is an "interesting" 
+feature. 
+
+0,1
+1,2
+2,3
+   2,7  2,8
+   7,8  8,7
+   8,3  7,3
+3,4
+5,6
+
+C main: can have special behavior, or we need to set_context() and push_context()
+before calling main:. The set/push could set in=1, out=0 or some rational
+combination of in/out that works for the start and finish of the routine,
+and allows scripts to be chained (if possible), e.g. chain the stream from
+one script to another.
+
+Perhaps main could start with 
+if (pop_context())
+{
+   get_context()
+}
+else
+{
+   in=0;
+   out=next_stream();
+}
+but this also means that something special has to happen when main: terminates.
+
+Debugging Deft scripts:
+
+- static.html had extra dcc() loop distinct_gi_pk. Removed it. Other parts
+of the template don't render.
+
+- using the wrong template give bad output
+
+- forgetting to recompile .deft gives odd results
+
+
+C Noah: old build_add_args was fine with "" for the agg col, but
+dcc() returns "" when where is true, and zero when where is false. 
+Is this expected?
+

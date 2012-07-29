@@ -1,0 +1,12 @@
+main:
+{
+    keep("findme,save,continue,question,answer,keywords");
+    # Any 4 consecutive control characters become a hard paragraph break,
+    # aka two breaks.
+    $question =~ s/([\000-\037]{4})/<br><br>/sig;
+    $answer =~ s/([\000-\037]{4})/<br><br>/sig;
+    $keywords =~ s/([\000-\037]{4})/<br><br>/sig;
+    $findme_encoded = www_quote($findme);
+    # faq_pk's post insert value becomes part of stream
+    do_sql_simple("faqdemo","faq_pk,pk_seq", "insert into faq (question,answer,keywords,valid) values ('\$question','\$answer','\$keywords',1)");
+}

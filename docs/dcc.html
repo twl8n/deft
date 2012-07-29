@@ -1,0 +1,240 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta content="text/html; charset=ISO-8859-1" http-equiv="content-type"><title>Deft Control Column</title></head>
+<body alink="#000088" bgcolor="#ffffff" link="#0000ff" text="#000000" vlink="#ff0000">
+<table border="0" cellpadding="0" cellspacing="0" width="800">
+  <tbody>
+    <tr>
+      <td valign="top">
+<a href="./">Home</a><br>
+
+      This document explains how looped areas of templates are created in Deft templates. We assume a working knowledge of HTML. <br>
+      <br>
+The simplest Deft templates have no loops and only colums substituted
+into the template. Columns are denoted with Perl style variables e.g.
+$variable. Only scalars are allowed. If a variable does not occur in
+the data record, it will be left in the template undisturbed (this
+allows templates to be used as templates).<br>
+<br>Looping in Deft is controled by special columns in the data. Deft
+control columns are created by&nbsp; the Deft programmer using the
+special aggregation function
+dcc(). The memnonic for "dcc" is "declare
+control column". As far as the templates are concerned, it isn't
+important how dcc() works, just that such a column will work correctly
+with the template. There is a special part of the Deft template called
+the "loop control" which describes what portion of the template is
+controlled by each control column. Loop controls are surrounded by { }
+and must have a control column as the first thing inside the { }.<br>
+      <br>
+The example below has two control columns: $distinct_t and $distinct_dt
+(respectively "distinct title" and "distinct title/description"). <br>
+      <br>
+There are limits to the valid locations of various kinds of data and tags in HTML. In keeping
+with HTML coding rules, start and stop strings in the control specs are
+URI encoded. &lt; becomes &amp;lt; and &gt; becomes &amp;gt; This is
+the type of encoding that your HTML editor will use. If you aren't
+using an HTML editor you might choose to skip the encoding, although
+your raw template may not render in a web browser. Deft templates are 100% HTML
+compliant when encoding is used.<br>
+      <br>
+The first control spec is "{$discinct_t start &amp;lt;tr&amp;gt; -2
+stop &amp;lt;/tr&amp;gt; +4}". The table below has a breakdown of the
+parts of the loop control.<br>
+
+      <br>
+
+      <br>
+
+      <table border="1" cellpadding="0" cellspacing="0" width="800">
+
+  <tbody>
+    <tr>
+      <td align="center" valign="top">1<br>
+      </td>
+      <td align="center" valign="top">2<br>
+      </td>
+      <td align="center" valign="top">3<br>
+      </td>
+      <td align="center" valign="top">4<br>
+      </td>
+      <td align="center" valign="top">5<br>
+      </td>
+      <td align="center" valign="top">6<br>
+      </td>
+      <td align="center" valign="top">7<br>
+      </td>
+      <td align="center" valign="top">8<br>
+            </td>
+<td align="center" valign="top">9<br>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" valign="top">{<br>
+      </td>
+      <td align="center" valign="top">$distinct_t<br>
+      </td>
+      <td align="center" valign="top">start<br>
+      </td>
+      <td align="center" valign="top">&amp;lt;tr&amp;gt;<br>
+      </td>
+      <td align="center" valign="top">-2<br>
+      </td>
+      <td align="center" valign="top">stop<br>
+      </td>
+      <td align="center" valign="top">&amp;lt;/tr&amp;gt;<br>
+      </td>
+      <td align="center" valign="top">+4<br>
+            </td>
+<td align="center" valign="top">}<br>
+      </td>
+    </tr>
+    
+  </tbody>
+      </table>
+
+      <br>
+      <table border="0" cellpadding="2" cellspacing="0" width="100%">
+        <tbody>
+          <tr>
+            <td valign="top">1.<br>
+            </td>
+            <td valign="top">Left { starts the loop control.<br>
+            </td>
+          </tr>
+          <tr>
+            <td valign="top">2.<br>
+            </td>
+            <td valign="top">
+The column name of the loop control must follow the opening {</td>
+          </tr>
+          <tr>
+            <td valign="top">3.<br>
+            </td>
+            <td valign="top">Together 3, 4, and 5 describe the start of the loop. The word "start" is required.<br>
+            </td>
+          </tr>
+          <tr>
+            <td valign="top">4.<br>
+            </td>
+            <td valign="top">This string of characters matches part of
+the template. In the case above, it is URI encoded &lt;tr&gt; or a
+table row tag. The matches are normal string matches, not regular
+expressions.<br>
+            </td>
+          </tr>
+          <tr>
+            <td valign="top">5.<br>
+            </td>
+            <td valign="top">Count the number match positions. Negative
+numbers indicate that we move backwards in the template e.g. towards
+the beginning or left. A - or + sign is required. There are examples
+below that explain match positions in detail.<br>
+            </td>
+          </tr>
+          <tr>
+            <td valign="top">6.<br>
+            </td>
+            <td valign="top">Columns 6, 7, and 8 describe the end of the loop. The word "stop" is required.<br>
+            </td>
+          </tr>
+          <tr>
+            <td valign="top">7.<br>
+            </td>
+            <td valign="top">The part of the template to match for the end of the loop. The example above is &lt;/tr&gt;.<br>
+            </td>
+          </tr>
+          <tr>
+            <td valign="top">8.<br>
+            </td>
+            <td valign="top">The number positions of the stop text match. Plus indicates moving forward (right) in the template. A + or - sign is required.<br>
+            </td>
+          </tr>
+          <tr>
+            <td valign="top">9.<br>
+            </td>
+            <td valign="top">The closing } at the end of the loop control.<br>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <br>
+To reiterate, a control loop is surrounded by { } and it has a
+controling column, as well as start and stop locations within the
+template. That's really it. <br>
+      <br>
+Below is an example using the second loop control which is highlighted
+blue box. Incidently, the second loop is "inside" the first loop. <br>
+      <br>
+Starting at the second loop control statement "{$distinct_dt start
+&amp;lt;tr&amp;gt; -2 stop &amp;lt;/tr&amp;gt; +2}" and working
+backward (left, up) I've labeled four positions around each &lt;tr&gt;.
+Matches occur on both sides of &lt;tr&gt;. In the example below we are
+counting backward, so the markers have negative numbers. When you get
+to a &lt;tr&gt; the first side we encounter is -1, and after we pass
+&lt;tr&gt; you are at -2. The first side of the next &lt;tr&gt; is -3,
+and after passing &lt;tr&gt; we are at -4. <br>
+      <br>
+The example loop control below goes backwards to -2. I labeled -3 and -4 only to illustrate where these occur.<br>
+      <br>
+Going forward from the loop control, we see that the stop matches
+&lt;/tr&gt; and will go to +2. We first encounter &lt;/tr&gt; at +1,
+and after passing &lt;/tr&gt; we are at position +2.<br>
+      <br>
+      <div align="center"><img alt="" src="dcc1.jpg" border="1" height="400" width="680"><br>
+      <br>
+      </div>
+      <br>
+Keeping all that in mind, the blue area below highlights the portion of
+the template controlled by the second loop control. The loop is&nbsp; one
+&lt;tr&gt;...&lt;/tr&gt; tag, or one row in the table. Everytime this
+control column ($distinct_dt) has a new distinct value, it will create another row in the
+table.<br>
+      <div align="center"><img alt="" src="dcc2.jpg" border="1" height="400" width="680"><br>
+      </div>
+      <br>
+      <br>
+      <br>
+Building on what we've done so far, the two loops are highlighted
+below. The outer loop is green, and the inner loop in blue. Notice that
+both loops end in the same location. This is fine. Loops can contain
+other loops. However, loops can't over lap in such a manner that part of a loop is
+inside and part outside. <br>
+      <br>
+      <div align="center"><img alt="" src="dcc3.jpg" border="1" height="400" width="680"><br>
+      <br>
+      <br>
+      <br>
+      <div align="left">Below is a second example as review. For this example, we will use the first loop control hightlighted in the image below.<br>
+      <br>
+      <div align="center"><img alt="" src="dcc6.jpg" border="1" height="400" width="680"><br>
+      <br>
+      <br>
+      </div>
+      <br>
+In the image below the start section is highlighted. The start match is &lt;tr&gt; and is -2. We count backwards
+to the left side of &lt;tr&gt;.<br>
+      </div>
+      <br>
+      <img alt="" src="dcc4.jpg" border="1" height="400" width="680"><br>
+      <br>
+      <br>
+      <br>
+      <div align="left">Using the same example, in the image below, the
+stop match is &lt;/tr&gt; and we count forward +4. That takes us to
+the location marked in the image on the right side of the lower
+&lt;/tr&gt;. We have passed two &lt;/tr&gt; tags, and since we count
+the first and second positions at each tag, we get to +4 after the
+second &lt;/tr&gt;.<br>
+      </div>
+      <br>
+      <img alt="" src="dcc5.jpg" border="1" height="400" width="680"><br>
+      </div>
+      <br>
+      <div align="center"><br>
+      </div>
+<br>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<br>
+</body></html>

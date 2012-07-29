@@ -1,0 +1,7 @@
+main:
+{
+    keep("findme,faq_pk");
+    $findme_encoded = www_quote($findme);
+    render("","Content-type: text/html\n\n","ask_delete.html");
+}
+

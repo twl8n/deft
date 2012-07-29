@@ -1,0 +1,24 @@
+main:
+{
+    keep("findme,findme_encoded");
+    #$findme = CGI::unescape($findme);
+    if ($findme_encoded)
+    {
+	$findme = www_dequote($findme_encoded);
+    }
+    if (! $faq_pk)
+    {
+	$faq_pk = 0;
+	$question = "";
+	$answer = "";
+	$keywords = "";
+    }
+    do_sql_simple("faqdemo","","select * from faq where valid=1");
+    #default, fields to search, found records field
+    do_search("baja", "faq_pk,question,answer,keywords", "rank");
+    dcc("distinct_faq_pk", "faq_pk", ["rank >= 1"],["rank,dn","faq_pk,an"]);
+    $findme_encoded = www_quote($findme);
+    render("","Content-type: text/html\n\n","draw_all.html");
+}
+
+

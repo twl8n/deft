@@ -1,0 +1,349 @@
+
+<html>
+  <head>
+    <title>Deft Concept Introduction</title>
+    <meta name="keywords" content="deft, declarative,data,parallelism,programming, table, oriented, table oriented programming,functional">
+    <meta name="description" content="Deft declarative table oriented computer language.">
+  </head>
+  <body>
+    <a href="./">Home</a><br>
+    <pre>
+
+Table of contents
+-----------------
+Introduction
+Deft is TOP
+Deft is monadic
+Deft is declarative
+The table
+Record independence
+Aggregation functions
+Compositional data structures
+Reporting, templates, and flattening
+A simple example
+The Deft template engine
+References and links
+
+
+Introduction
+------------
+
+This is the third draft. Detailed explanation is still developing, as
+is the glossary.  The math concepts require further illumination and
+clarification, although they are quite well developed and supported by
+a copious set of references. Deft was invented and implemented by Tom
+Laudeman and Noah Healy. Please excuse the simple formatting. We see
+little gain from creating a visually stimulating HTML document when
+the document's purpose is technical exposition. Nonetheless, when
+required, more visually interesting formatting will come with the
+addition of a Deft template and Cascading Style Sheets.
+
+
+
+Deft is TOP
+-----------
+
+Deft is a table oriented programming (TOP) computer language with
+declarative execution. Deft has data parallelism. The uses of Deft are
+primarily data manipulation and reporting. Deft source compiles to
+Perl. The compiler is Perl and statement syntax is essentially
+Perl. Deft relies on SQL (especially Postgres) to support a variety of
+non-core API reporting features. Deft has its own templating solution
+which is tailored toward HTML output. The novel templates are both
+very powerful and very easy to use. There is no code in the
+templates. Deft is strongly supportive of the Model View Controller
+(MVC) coding style.
+
+
+
+Deft is monadic
+---------------
+
+Even though Deft does not have monads per se, monadic actions are
+inherent to the execution model in Deft. I/o and functional
+transformations are all automatically monadic because the function is
+applied to each record in the table. Monadic behavior is
+unavoidable. Since all operations are monadic, even ostensibly
+imperative statements become functional. 
+
+Deft has functional composition via shared variables between
+imperative statements. When two statements have at least one common
+variable, the final result (the table) is "composed" by several
+function calls.
+
+The downside is that we have to create dummy variables since functions
+cannot take functions as arguments (yet).  However, even this apparent
+limitation has an upside. Deft's simplistic method allows a blend of
+variables to be moved between functions.
+
+
+
+Deft is declarative
+-------------------
+
+Deft is declarative much like Perl's "grep" or "map" functions or SQL
+statements. Unlike SQL, Deft is Turing complete. The TOP aspect of
+Deft is that essentially the only data structure is the column (in
+concert with an implied table) The columns exist in an implicit
+table. The table is essentially a non-ordered first normal form
+table. Merely referring to a column instantiates that column in the
+current scope. Deft is lexically scoped. Functions take columns as
+arguments. With a small set of supporting syntactical sugar, the first
+normal table is superior to traditional structs or classes. Any
+arbitrarily complex data structure is easily represented by a first
+normal form table.
+
+Each statement operates on a record set and produces a record set as
+output, although the input and output are implied. There is no need
+for looping (for, while) since execution is declarative. Side effects
+are nearly nil. Due to the single data structure (the table) there can
+be no errors of passing the wrong struct. (Although it is quite
+possible to pass an incorrect structure imputing column. More on how
+structure is imputed later.) These three aspects eliminate many of the
+sources of error (bugs) inherent to traditional computer
+languages. SQL has minimal row-wise interaction, being limited to
+operations such as 'group by' and 'sort'. Deft includes
+sorting-aggregation functions that obviate the need for a traditional
+'sort'. SQL 'group by' is rarely required in a Deft program
+
+
+
+The table
+---------
+
+During the process of implementing Deft and researching the history of
+data structures, we found many interesting (and largely unknown or
+ignored) aspects of the non-ordered, first normal form table (which
+will henceforth be referred to simply as "the table"). We also often
+refer the table as "the stream" since conceptually it is "streamed"
+from one line of Deft to the next. We use the term "record" in the
+usual sense of a row in a table. Deft variables are columns in the
+table, or cells in the record. However, since Deft only deals with
+single records, the terms "column" and "variable" ( in the sense of a
+scalar) are interchangeable. Deft has no other data types, and in
+keeping with Perl's conventions, typing is weak. Noah is fond of
+referring to a column as a "multi-valued variable" where each value is
+in a separate record.
+
+Conceptually, a Deft table is a two dimensional array. We will
+probably always retain this conceptual view of the data, although the
+actual implementation is almost certain to change. (The table is
+currently implemented as a list of hashes with some ancillary
+bookkeeping variables.) Typically, people avoid first normal form due
+to the data repetition, as well as seeming difficulties in managing the
+data. Contrary to this commonly held opinion we have found that first
+normal form is easy to use and powerful. The missing piece of the
+puzzle are a small set of functions which make working with the table
+easy and intuitive.
+
+
+
+Record independence
+------------------
+
+First normal gives us record independence. A single record is
+complete, and the order of the records is not important. Records have
+no knowledge of other records. Records are required not to know or
+care about other records. Relational data is flattened as specified by
+the programmer (Deft does joins by performing matrix multiplication,
+which sounds nasty but turns out to be efficient and simple). Data
+manipulation processes are only concerned with the current record. We
+have realized a 3 to 1 reduction in number of lines of code compared
+to Tom's rather verbose Perl. Fewer lines of code is good. An
+excellent paper by Moseley and Marks shows that the theoretical
+minimum for a Deft program is the square root of the number of lines
+in a traditional language such as Java. 
+http://web.mac.com/ben_moseley/frp/paper-v1_01.pdf 
+
+The table is inherently amenable to parallel operations due the the
+independence of records (data independence; more on this below).  The
+current version of Deft is single tasking, but we have older versions
+which were capable of parallel operation (our implementation was crude
+and slow, but worked). Deft algorithms and code are identical for both
+single and parallel versions. There is no need for the programmer to
+provide an extra layer of management for the parallel code.
+
+
+
+Aggregation functions
+---------------------
+
+When working with the table, it is necessary to have some
+"aggregation" functions. For example, in Deft we have the function
+"dcc" (mnemonic: declare control column) which creates a control
+column for Deft templates. The control column tells the template API
+which records to render, and what their order will be. The internal
+workings of dcc are moderately complex, but the function is simple to
+use. Some common aggregation functions are sum, min, max, and
+count. Our work so far shows that a small library of aggregate
+functions is capable of handling nearly all programming needs. A large
+portion of common tasks is handled by the function "desc" (mnemonic:
+declare explicit structure column). The current implementation of Deft
+includes additional aggregation functions which serve more as high
+level tools: an SQL wrapper, a search engine, and the template
+rendering function.
+
+While the purpose of aggregation operations requires them to have
+internal state information, all other types of Deft statements have no
+stateful behavior. This leads to fewer bugs, and faster development
+time.
+
+Record independence means that each step of a manipulation can be
+performed sequentially by separate processes chained together. The
+process of developing a Deft program is an accretive behavior where
+lines of code are added to build a desired data set. This type of
+compositional programming lends itself to breaking the problems into
+small, easily manageable conceptual blocks.
+
+
+
+Compositional data structures
+-----------------------------
+
+Data structure is imputed onto the table by adding one or more
+columns. This process is intuitive. Creating the aggregation functions
+to support imputed data structure was an interesting
+challenge. However, so far this process only requires one or two
+generalized functions. Deft has none of the complexity of traditional languages involved
+with managing data structures. There are not issues with creating
+references to data, nor to de-referencing pointers, etc.
+
+We theorize that many of these aspects of TOP explain why it has not
+been more thoroughly explored by modern computer language
+designers. That said, essentially all of our "discoveries" have been
+previously reported.
+
+
+
+Reporting, templates, and flattening
+------------------------------------
+
+We have created an execution and report rendering
+environment where record order is meaningless until the data is
+flattened and rendered for human consumption. Explicit order
+necessary for rendering a report is handled by special aggregation
+functions that create control columns in the data set. A report can
+represent the data in several orderings if necessary without
+duplicating the data for each ordering. This capability is so
+difficult in other computer languages that data is simply
+duplicated. An example is using two SQL queries when the records are
+required to have two different orderings. 
+
+
+
+A simple example
+----------------
+
+As an example imagine a conference schedule. The conference has
+'topics' each of which has one or more 'speakers', so that we have a
+simple relational model. To create the web page of the conference
+schedule it will take several lines of Deft code (here represented as
+meta code, with lines numbered for clarity.) This example assumes
+there is a database with two tables: "topic", and "speaker". Topic
+contains time, title, room number, and speaker contains name, title,
+affiliation, email address. Since there can be several authors per
+topic, we have a one-to-many relationship between the tables.
+
+1. select topics (select * from topics)
+2. select speakers for each topic (select * from speakers where topic
+foreign key = topic primary key found in the stream)
+3. create a control column for unique topics, sorted by time
+4. create a column of unique authors and topic, sort by author last name
+5. render a template (using the two columns we created)
+
+Lines 1 and 2 use SQL. Deft knows how to talk to databases, using Perl
+DBI. 
+
+Line 2 will cross multiply the number of topics by the number of
+speakers per topic. From a table-centric or data-structure-centric
+view this may seem like a waste of space to duplicate
+records. In reality, it consumes very little memory or bandwidth. More
+importantly, each record is complete and can be handled independently
+of other records. It is easy to imagine an implementation in Deft that
+was conceptually first normal, but which did not duplicate the
+data. This is a future development since all applications to date
+perform quite well.
+
+Lines 3 and 4 are necessary as a prelude to the rendering step. Based
+on the requirements (i.e. unique topic), line 3 creates a new column with special
+encoding expected by the rendering engine. This column contains a string that tells if
+a record will be emitted in the rendering step, and what order it
+should be rendered in. Lines 3 and 4 are interchangeable in order. It
+is important that line 4 requires both unique author and topic. In our
+example, topics create a new row in the HTML output, and authors are
+listed within that row (perhaps even in table cells). This
+relationship must be spelled out in the control column created by
+statement 4, and is therefore explicit. The relationship is also
+mirrored by a control column specifier in the HTML source. 
+
+
+
+The Deft template engine
+------------------------
+
+The template understands that there are two control columns, and if
+those columns would be nested, it also understands the nesting. No
+other information is required by the template.
+
+The template designer must create a row in the template for the topic,
+and author must be 'inside' that row. The rendering engine outputs
+rows based on control columns in the table. The specification of the
+control columns and template are part of the specification of the
+final web page. We envision that the template creation will often be
+carried out by a HTML expert who may know nothing of databases (and
+doesn't need to) while the Deft script is created by a DBA or
+programmer who knows nothing about HTML and design (and doesn't need
+to). As long as certain core aspects of the specification are
+followed, changes to either the Deft script or the HTML template are
+totally independent. This is a very pragmatic separation of roles
+envisioned by MVC.
+
+The template is 100% pure standard HTML that will render in any
+browser, and is editable by any web editor. This is a nice aside for
+template designers. The designer doesn't need the final program in
+order to develop the template since the template itself is a valid
+document. (This is not true of traditional php web pages which are not
+MVC compliant, nor it is true of nearly all other template systems.)
+The template contains loop control sections. However, we've devised an
+easy way to put the loop controls in the HTML content, not inside tags
+or attributes (even when attributes need to be controlled by the data
+stream).
+
+We have working, mature, production quality, data driven, search
+engine based, web sites driven by Deft scripts with less than 10 lines
+of Deft code.
+
+We go into greater detail about the Deft template system in other
+documentation.
+
+
+
+References and links
+--------------------
+
+Clearly this list is incomplete. We still need to find our references
+for several topics. In no particular order: table oriented
+programming, flow based programming, functional programming,
+declarative programming, monads, closures, lazy evaluation, late
+binding, relational data model, compositional data structures, Model
+View Controller and the separation of roles in software developmenet,
+code size versus development time, coding models versus number of
+bugs, common sources of bugs in software, parallel computer languages,
+iterative software development, algebraic systems and why every data
+structure should have its own algebra, lambda calculus, graph theory
+as applies to templates, the future of programming especially Paul
+Graham's 100 Year Language essay.
+
+
+Loops in scheme
+http://jaortega.wordpress.com/2007/02/25/scheme-loops/
+
+Edgar Frank "Ted" Codd: A relational model of data for large shared data banks
+http://portal.acm.org/citation.cfm?id=358007
+
+Wikipedia: Ted Codd
+http://en.wikipedia.org/wiki/Ted_Codd
+
+    </pre>
+  </body>
+</html>

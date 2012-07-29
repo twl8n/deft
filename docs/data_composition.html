@@ -1,0 +1,208 @@
+<html>
+<head>
+<title>Composition of data structures in Deft</title>
+</head>
+<body>
+<pre>
+<a href="./">Home</a>
+
+Closures
+--------
+
+
+In order to have closures Deft must have first class functions. A
+variable must be able to contain a function. This is fairly odd given
+the declarative execution model and Deft variables which (until now)
+were only scalars (and Noah notes that the variable will still be a
+scalar, but I would argue that a scalar containing a string or integer
+is different (in some sense) from a scalar containing a function
+(really a reference to a function, or a string which could be eval'd
+as a Deft function)).
+
+The simple case is legible:
+
+$var = my_func();
+
+However, this is not a closure yet.
+
+sub my_func($a, $b)
+{
+  $a = $b;
+}
+
+$q = 4;
+
+# $var contains a function.
+# The first argument will be supplied later.
+# The second argument is hard coded, and it's value is bound to $var
+# at the time this line is run. Since this binding happens at run
+# time, and is later than compile time, this is considered "late
+# binding". (Noah is checking on this last conclusion.)
+
+$var = my_func(,$q);
+
+# Invoking $var, we supply the first argument (which was missing at
+# the time $var was defined. We have a case of binding where $var gets
+# the value of $q from the initialization of $var, not from when $var
+# is called (invoked). $q may have gone out of scope by the time $var
+# is invoked.
+
+$q = 9;
+
+$var($new_var,);
+
+print "$new_var\n";
+
+4
+
+# This is a closure. This is also lexical scope (in that re-assigning
+# $q just before $var is invoked will not change the value of
+# $new_var). If this were dynamic scope (which it is not), then
+# re-assigning $q in the line before the invocation of $var would
+# change the value of $new_var. "Dynamic" in this sense is that the
+# definition of $var would update when ever $q changes. This does not
+# happen and should not happen. Do not confuse changing the definition
+# of $var with a simple statement $p = $q + 1 where even with lexical
+# scoping, $p will always change when $q is changed.
+
+Deft doesn't have return values, therefore our closure doesn't have a
+return value.
+
+$new_var = 0;
+$foo = 13;
+
+sub func_b($foo, $bar, $func)
+{
+  $func($bar);
+  print "$a $bar\n";
+}
+
+func_b($foo, $new_var, $var);
+
+13 4
+
+
+The closure saves one or more variables whose values are known early
+in runtime. It also allows saving of state early in execution, while
+removing the necessity of having the state-containing scalar being in
+scope when the function is invoked.
+
+It is possible to define new control structures using closures (demo
+to follow later). 
+
+Closures can be used to create anonymous tables. 
+
+Closures can be used to hide recursion.
+
+With closures it is possible to hide if-else chains in data and this
+is useful in recursion (at least to make cleaner code).
+
+
+
+
+The anonymous case below is confusing to read. While powerful this
+clearly heads in the direction of obfucated Perl code. 
+
+$var = ($a,$b){$a = $b};
+
+
+Composition of data structures.
+
+Composition in this sense is building a complex data structure via the
+operations of cartesian products and unions. Basically, Deft allows
+the (almost) trivial creation of complex data structures, and the
+manipulation of the structure (and data, of course). Deft's internal
+data structure is represented by a single instance of a first normal
+table. That Deft is able to do composition is a hopefully obvious
+consequence of relational operations and normal form.
+
+Deft currently relies on SQL for data storage, however, SQL has
+limited abilities which prevent SQL from supplanting Deft as far as
+data structure. Due to the limits of SQL, creating and managing a
+Deft-like unitary table is quite difficult. If you consider basic
+(standard) SQL, then the act of creating a unified table would require
+that all the SQL queries necessary to build the table would be in a
+single query (as subqueries).
+
+Deft has scalar variables in the (more or less) normal sense. Deft
+does not have (nor needs) arrays, lists, hashes, user created
+"structs/classes", or combinations of these structures. Deft has a
+single, implicit, first normal table. We distinguish it with the
+special name "the Stream" when speaking about it. The Stream is never
+referred to since (like mass or gravity) it is fundamental (and
+automatic) to the fabric of Deft. It is well established that any
+arbitrary data structure can be represented in first normal form. In
+order to understand Deft, you should easily understand why (if not,
+please contact the authors of Deft so we can write applicable
+tutorials). What is not so obvious is that describing the complex
+structure only takes a small number of functions (dcc(), desc(),
+duc()). The Stream (being a first normal table) is powerful enough for
+most uses without additional structure imputed on it. When extra
+complexity is necessary (e.g. when you need a tree), you only need a
+single, fairly simple function call. Additionally, several different
+tree structures are just as easily imputed onto the Stream.
+
+
+Scalar variables and the execution model.
+
+Each line of Deft is run in a declarative manner. Each line of code
+will be applied to each row in the Stream. Scalar variables are
+columns from the Stream. In order to illuminate the execution model
+you should know about two internal functions: unwind() and
+rewind(). Unwind reads a record from the Stream. Rewind writes a
+record back into the Stream. (The actual implementation involves a
+streaming queue, and is akin to a pop/unshift.) The execution model
+for a single line of scalar Deft code:
+
+  $my_counter++;
+
+is 
+
+  while(unwind())
+  {
+    $my_counter++;
+    rewind();
+  }
+
+In other words, unwind a row, increment the value in the column
+$my_counter, and then rewind the row. Some of you may recognize that
+many optimizations of unwind/rewind are possible. 
+
+The way Deft implements composition of data structures allows (almost)
+trivial creation of structure. A column containing the structure
+information is a column of data like any other column (strucutre data
+is first class data). dcc() creates a structure column. A new column
+is created that contains an ordering, with a "where" clause. Existing
+columns aren't changed.  dcc() happens to be used almost exclusively
+for rendering web pages. To give a concrete example, a template with a
+loop would require a list of hashes with HTML::Template. The same
+template in Deft requires only a single dcc() call (Deft has a
+powerful built-in template engine). Unlike HTML::Template where the
+programmer is required to build the list of hashes, in Deft the "list
+of hash" equivalent structure is merely imputed onto the Stream. The
+more complex the problem, the greater the advantage of composing
+structure. Any HTML::Template with a doubly nested loop requires "list
+of hashes of lists of hashes". Parts of the template outside the loops
+will require a separate hash. Traditional programming quickly acquires
+many data structures, all with their attendant management code. Our
+example of a template with some "flat" values, values in the outer
+loop and values in the inner loop requires 2 data structures. Deft
+requires two dcc() calls. Deft uses two lines of code, and the data
+needs no prior preparation.
+
+Those of you who have been required to create and manage nested lists
+of hashes will understand that these structures are a headache. 
+
+The traditional "list of hashes of lists of hashes" must be built to
+purpose, and that structure isn't really useful for much else. If the
+programmer with an n-way structure needs the same data flat, there
+will be two (or more) sets of data to manage. Deft will always only
+have one set of data. The traditional subroutines and associated data
+structures can't easily be repurposed. Deft subroutines work on data
+you care about, and ignore columns you don't care about (including
+columns with imputed structure).
+
+
+</pre>
+</body>
+</html>
