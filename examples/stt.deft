@@ -1,0 +1,24 @@
+# Stream Test Top
+# This demonstrates why we should not test streams for being ok,
+# or not before running them. TOP code in an empty stream
+# still needs to be run since it migth create new records.
+# Scalar code in a null stream won't run, so it (sort of) doesn't matter.
+
+# What does matter is that if we have popped the stack, we put something else
+# back on. Popping to get the input stream must be paired with a next stack call
+# to create an output stream. 
+
+
+main:
+{
+    read_tab_data("../demo.dat",$sequence, $make, $model, $displacement, $units);
+    if ($make =~ m/ford/i)
+    {
+	dump_stream("ford");
+    }
+    else
+    {
+	dump_stream("not ford");
+    }
+    dump_stream("final");
+}

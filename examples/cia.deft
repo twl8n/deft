@@ -1,0 +1,22 @@
+
+# cia is memnonic for "cars if (a)" using a, b, c... instead of numbers
+# since the letters are somewhat easier to type and I've found myself
+# typing these names a zillion times.
+
+# This tests the most simple if statement
+
+ main:
+{
+    # Read in data for the rest of the tests.
+    read_tab_data("../demo.dat",$sequence,$make,$model,$displacement,$units);
+
+    dump_stream("one");
+
+    if ($make =~ m/volks/i)
+    {
+	$model = "first";
+    }
+
+    dump_stream("two");
+
+}

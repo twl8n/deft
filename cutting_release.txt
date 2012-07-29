@@ -1,0 +1,47 @@
+
+How to checkout
+---------------
+
+cvs -d:ext:infogizmo@cvs.sourceforge.net:/cvsroot/deft checkout -d deft  ./
+
+
+# rcs doesn't like . in tags, so use _
+#rcs -n"version_3_1": RCS/* docs/RCS/*
+cvs tag rel_3_2_1
+
+# This export doesn't work, probably because I really don't 
+# understand initial import to Sourceforge's CVS.
+# I get this error message:
+#cvs server: cannot find module `deft' - ignored
+#cvs [export aborted]: cannot expand modules
+# cvs export -r rel_3_2_1 -d deft_3_2_1 deft
+
+# This works fine.
+cvs export -r rel_3_2_1 -d deft_3_2_1 ./
+
+mv deft_3_2_1 ../
+
+# go up one directory so tar will untar into a directory "deft"
+cd ..
+
+# root is the only user we can be sure exists on all systems (except OSX?)
+su -l root
+chown -R root:root deft_3_2_1
+
+# sf.net prefers .gz files.
+tar -czvf deft_3_2_1.tar.gz ./deft_3_2_1
+
+# change ownership back to make cleanup easier.
+chown -R demo:demo deft_3_2_1 ./deft_3_2_1.tar.gz
+
+# exit from root
+exit
+
+# upload the .gz to sf.net and do the usual sf.net new release stuff.
+ftp upload.sourceforge.net
+
+cd incoming
+
+put deft_3_2_1.tar.gz
+
+quit

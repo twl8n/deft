@@ -1,0 +1,6 @@
+ main:
+{
+    read_tab_data("/home/demo/public_html/deft/sort_test.dat","sequence,label");
+    dcc("dcc_seq", "sequence", [""],["sequence,an"]);
+    render("","","/home/demo/public_html/deft/sort_test.txt","");
+}

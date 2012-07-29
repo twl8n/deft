@@ -1,0 +1,4 @@
+$step
+/-\
+|$state|
+\-/{$x_cord start - -4 stop - -3}{$x_cord start - -2 stop - -1}{$y_cord start | -4 stop \\ -2}{$position start | -3 stop | -2}

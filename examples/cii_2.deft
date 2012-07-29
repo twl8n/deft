@@ -1,0 +1,29 @@
+
+# cii is memnonic for "cars if if". This tests and if statement
+# followed by another unrelated if statement.
+
+# Correct results are that 
+# volks: $model is "first" then "second" at the end.
+# volks: $new_units is changed.
+# datsun: $model is third.
+
+# It is a good idea to run this test with the inside if-else commented
+# out, as well as with it in place.
+
+ main:
+{
+    # Read in data for the rest of the tests.
+    read_tab_data("../demo.dat",$sequence,$make,$model,$displacement,$units);
+
+    # Simple test of if()
+    if ($make =~ m/volks/i)
+    {
+	if ($units eq "cc")
+	{
+	    $new_units = "cubic centimeters";
+	}
+    }
+
+    dump_stream("one");
+
+}

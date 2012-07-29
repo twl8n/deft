@@ -1,0 +1,1416 @@
+ Todo list (See release_notes.txt for completed tasks)
+ Tasks are encoded - !,-,- +,- x,- N,- C,- ?,- Q/A as follows:
+(- !) urgent (-) needs to be worked on (- +) current being worked on (- x) completed
+(- N) not necessary, e.g. No, don't work on this (- C) comment (- ?) check or test this
+(- T) Tom project uses deft not actually relevant to language (- H) Same but for Healy
+Group related tasks via standard outline section numbering: 1(digit),a(letter),i(roman)
+
+Use -- as the leading sigil for related subtasks.
+
+Tags are "foo:", such as bug: fix: deprecated: no: discuss:
+
+Get rid of comments, and instead use Q:/A: pairs so we have both a question
+and the answer in order to keep track of the context of the comments.
+---------------------------------------------------------------------
+
+$table[row_number][stack_depth]
+$table[stack_depth][row_number]
+
+$curr_eef
+
+
+push @table, \%record;
+$record{variable_name}[0] = 'manipulable value';
+$record{variable_name}[1] = 'manipulable value';
+
+# if shift and unshift then current is index 0
+# 
+
+
+# scope value
+# lvalue index
+sub lvalue_index($var)
+{
+    if ($using_pop)
+    {
+        # Does the $#table need {}? Yes, if the second line needs it.
+        # return $#table[curr_row()]{$var};
+        return $#{$eeref{$var}};
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+sub get_eenv($var)
+{
+    return $eeref{$var}[lvalue_index($var)];
+}
+
+- view_list fails to understand alias
+vlr: $VAR1 = [
+          'str',
+          'order',
+          'units'
+        ];
+
+
+
+- inc_depth() or what ever fails to create new columns required by the
+  sub prototype. This should have $str, $order, $dummy and 7 records.
+
+Label:deft_uc input stream:
+getting eeref
+xrk:  get_eenv: $VAR1 = 0;
+
+(1) 1.make = Volkswagen
+(1) 1.sequence = 8
+(1) 1.units = cc
+(1) 2._memoz = 0
+(1) 2._rk = 
+(1) 2.units = 1
+
+Count:1
+
+
+- convert \%urh to view_list in all perl that calls unwind().
+
+- garbage_collection() is probably broken, needs %urh set_view_list() fix.
+
+- x add memoz() to compiler outout on common_lib.pl
+
+- + example/cars.deft compiles, but has runtime error, lots of memoz debugs.
+
+- x perl -pi -e 's/\#\!\/usr/\#\!\/opt\/local/;' *.pl
+
+  Space after -i is required (or before -e).
+
+- x fixed some gen_shebang() strings in common_lib.pl
+
+- x new session_lib.pm, commented out dup subs in common_lib.pl
+
+- x fix memoz and related in st_lib.pl with Noah's help.
+
+- x comment out some postgres stuff in sql_lib.pl
+
+- fix set_ref_eenv idiom. Check that $eeref is always followed by set_ref_eenv()
+
+set_ref_eenv(pop(stack));
+
+- fix compiler with new code
+
+- probably can/should skip memoz() if view list is empty.
+
+- Noah points out that if ! true is not a substitute for false.
+
+- x $eenv and $parent_eenv are the same in copy_view_list(); Fix:
+  memoz() was not saving the parent eenv ref in the values of the
+  record key. The child _memoz field was being set to itself instead
+  of the parent since without any info in %rec_keys the parent eenv
+  ref was lost.
+
+- x apparently, copy_view_list() is losing/destroying record 6.
+Fixed: not setting _memoz to zero after copy_view_list.
+
+- x memoz() is not working
+
+- Q Should memoz() call a simplified version of unwind()?
+- A No, but it does need to follow identical rules for list traversal. 
+
+- x Add memoz calls before all unwind loops.
+
+- x the last record will have next of zero, but when it is moved to stream head, the old stream head becomes its next, which screws up next_rec().
+
+move_rec() always sets _old_rec and next_rec() checks for existance of
+_old_rec and uses it (and deletes it) if it exists. Otherwise,
+next_rec() uses _next_rec the normal way. move_rec() and next_rec()
+both know about fully double linked next records for the current rec,
+but nothing else knows about this exception, and there are no side
+effects as far as the rest of the code is concerned.
+
+- x fix clear_var_eenv() to clear the alias with new sub clear_alias().
+
+- x when moving a record, copy with curr_rec change by keeping _old_next
+in the current record, and fixing next_rec() to deal with
+that. Essentially, the moved record has two next links and so remains
+linked to the old next even after being linked to the new next.
+
+See below. Although option 3 adds an occasional column, it has the
+fewest side effects.
+
+- N move_rec() also does rewind. The alternatives are:
+
+- N 1) move_rec() marks the record for move, and rewind moves as a side effect.
+
+- N 2) move_rec() is called after rewind().
+
+- x 3) record has a new field _old_next which rewind/next_rec understands
+and will use then set to zero.
+
+
+- In "if" statements, need to set _last_rec for the false
+-   records. Ideally the code would be identical whether or not there is
+-   a false block. (Or don't support "else").
+
+- + cia_hand_edit.pl using read_tab_data() and dump_stream() as minimal
+stream demo
+
+- x if zero records in the true if stream, then skip the next block of
+-   code.
+
+- Q Why does rewind() call next_rec()? Why have this at all? Why not
+have next_rec called from unwind()?
+
+- Q Why aren't "if" records run in the loop with the if conditional?
+
+- Q How do we handle memoizing for side effects of the if conditional?
+
+- Q Why not add unwind_move() that unwinds, memoizes and moves after
+memoizing if _result is true? It would save traversing the table a
+second time for each if statement.
+
+- x Only move true records, so we only need a true stream and maybe not
+     even that since the "true" stream is just records inserted at stream
+     head, the last of which has a _last_rec marker.. False records are
+     not moved because there is no need, and false records probably don't
+     need a _last_rec. After the if, execution begins at stream_head
+     which is the true records. Hitting a _last_rec means stop unwind,
+     rewind, and move to next code block.
+
+- x add _last_rec to stll_lib.pl code.
+
+- x new funcs: move_rec() (which keeps the stream head), unwind() needs
+to check for last_rec_bool, if last_rec then unwind sets a local flag.
+
+- x rewind should change change curr_rec to the next_rec, not
+stream_head.
+
+- N if statements have if_true stream head, if_false stream head. Call
+    move_rec(). move_rec() should always change stream_head to next rec,
+    which is the new first record in the table.
+
+- x if may not need a stack due to use of _last_rec column.
+
+- x change $::stream_head to local var to stll_lib.pl and access via
+    functions only.
+
+use Data::Dumper;
+die "undef stream in set_ref_eenv $clist[3] called from $clist[1] line $clist[2]" . Dumper(\@clist) . Dumper((caller())) . "";
+
+
+- Q Does Deft need scratch cols that go away after being used once? Or
+just a col delete function?
+
+- bug: error if code has "my $var".
+
+Should probably warn if $var is assigned twice in the same block. That
+will often be an error.a
+
+In cars.pl sub udump there is my $tmp twice in the code section. Could
+be a name space conflict with internal vars and user vars. Probably
+should use an internal var naming system or check for name conflicts.
+
+- x make examples/cars_hand_edit.pl run
+
+- x view_list set via a func, and becomes a file global in stll_lib.pl
+(or closure or something).
+
+- x copy st_lib.pl to stll_lib.pl and rewrite as linked list.
+
+- x rewrite everything to use new linked list table/streams.
+
+- x New table cols for system use. Switch to single table, don't copy
+    records to a new list of hash (internal table). How to only pass a few columns to a sub when using a single
+    table? How do we pass the table to subs now? Need to be able to
+    split stream and join streams.
+
+    Each record can only have one stream_id. unwind() needs to
+    efficiently find records with the current stream_id. Need efficient
+    copy/delete of records.
+
+memoz_bool, _next_rec_href, _prev_rec_href, _last_rec_bool
+
+
+
+stream_id, memoz, needs_unwind
+
+stream_id is integer
+
+memoz is 0 or parent $eeref
+
+needs_unwind is bool. Newly inserted records are zero. Rewound records
+are zero.
+
+
+- Q Create a record id. Record index is no good (or tricky) because
+  records can be added after unwind. The table may finally need to
+  become a more complex structure.
+
+- A Won't work because records don't have an id or index, just $eeref,
+    and as a result we can't tell parent and children records at the
+    rewind phase. Change unwind to keep working until it can unwind a
+    non-memoz record. Probably just instantly rewind the memoz'd
+    records. Add a post-rewind pass to copy cols from memoz parent
+    records into children.
+
+- x move the memoization to a pre-unwind phase. Noah points out that
+    memoization is required to prevent duplicate execution of side
+    effects like i/o, database inserts, and other unfortunately stateful
+    actions.
+
+- x when unwinding, if _memoz == 0 then unwind normally, else copy all the
+    view_key columns from the memoz record into this record, and
+    rewind. _memoz is the $eeref of the parent record.
+
+- x change _memoz in memoz() in st_lib.pl to be the $eeref of the parent
+    record, or zero for the parent record
+
+
+- Q Are dup records from the memoize pass ignored by unwind() and
+    updated during rewind()?
+
+- x Change streams over to function calls instead of global vars.
+
+
+- x Why is uhr a hash and why does it only have view_list as the key?
+    Change it to a list of columns the next loop will view (and/or
+    modify) and which therefore need memoization.
+
+- Why is print broken in faq.deft? How can there be a column that
+    doesn't print?
+
+- I'm pretty sure dispatch needs to rewind before dispatching. Right
+    now, the record that dispatch unwinds disappears. This is
+    bad. Verify.
+
+- + sub dispatch (compiled into the perl output) needs work. It should
+    be in common_lib.pl, and it should probably be a deft_func. What
+    the heck is it supposed to be used for?
+
+- fix compiler and/or if so that we don't go into if blocks that have
+    no records. We should never see "no data in stream" for an if block.
+
+- life.deft is broken again.
+
+- Q Can we change unwind to a closure? Call init_unwind() at the top of
+    main.  Change all unwind() calls to &$unwind().  
+
+- A No. The subroutine ref would be out of scope everywhere outside
+    main.
+
+- x Add a globals to st_lib.pl to fix rewind_ok, and go_flag.
+Fix initial no-stream unwind, and empty stream unwind when rewind is successful.
+
+- two assign of same var are grouped into one scalar loop, and only second assign works.
+See examples/assign.pl
+
+- x The first call to unwind() needs to run once. Currently, this
+    doesn't run because there's nothing to unwind, and to $var is never
+    rewound (in fact, get_eenv() is never called on "var").
+
+main:
+{
+$var = "stuff";
+dump_stream("test");
+}
+
+- fix naive_make_row or create push($var, 'value'); or create
+syntactical sugar $var = value, value, value; to assign values to rows
+of $var. Or $var = list(1,2,3);
+
+- fix dcc arg formats. Anon lists are silly.
+
+- $newcol = dcc(...); is more readable?
+
+- Q Should we add pass by value to Deft compiler/runtime?
+- A Perhaps...
+Fix render() args and maybe all internal deft_func calls (TOP
+    calls). Need to distinguish $var and "stuff".
+
+$fn = "-";
+$template = "./browse_tfd.html";
+render($fn, , $template, "Content-type: text/html\n\n",);
+
+my $fn_var = $_[0];        # name of the variable that has the output file name.
+$file_name = get_eenv($fn_var); 
+
+We change $var to "var", but this wrong because the runtime can't tell if that was a literal
+or a scalar. Deft has only pass by reference. 
+
+- Would be nice to add error trapping and reporting. Should enable use strict;
+?? missing , in ",dn" causes:
+Can't use an undefined value as an ARRAY reference at /home/snapshot/deft_6_3/runtlib.pl line 247.
+
+%csg_pk instead of $csg_pk causes:
+Can't use an undefined value as an ARRAY reference at /home/snapshot/deft_6_3/runtlib.pl line 247.
+
+perl -cw browse_tfd.pl
+Global symbol "%csg_pk" requires explicit package name at browse_tfd.pl line 84.
+browse_tfd.pl had compilation errors.
+
+- Use this regex for quoting:
+
+$var =~ m/('+|"+|`+(.*?)\1/;
+
+This enables non-escaped quotes inside quotes of a different
+type. Also enables doubled up quotes containing non-escaped or the
+same quotes. ""This string has "quotes"."" No need to escape internal
+- " because the quoting char is "" 
+
+- N Invent new types of interpolating strings "select * from table"sql
+    or (q) is SQL. Could include qw types, mixed multi flags, system,
+    etc. "echo this 'stuff'"s is system. Can prefix or postfix the sigil
+    letter. 'this $var "interpolates"'i can be an interpolated single
+    quoted string which contains non-escaped " due to the clever string
+    mechanism. "insert into table '$var'"qn is non-interpolated " quoted
+    with non-escaped ' as a SQL query (q and n). Just as a sample:
+- q sql execute 
+- n non-interpolate
+- i interpolate
+- s system execute
+
+How do we implement these strings?
+
+- Noah still likes some quoting for strings which will inject data
+    into the program. 
+
+sql:n" select * from $var";
+lv:n"$baz $foo $pie  $bar" = sql:" select sql:"select * from colnames where table='$var'" from $var";
+$var = sys:"echo $var \n";
+eval:n'this is a "test"';
+
+$var = "string here";
+
+Allow users to define new data injecting functions.
+
+- Use serializing an n-ary tree to allow Deft to transform any XML
+document into 2 columns where one column describes the location of the
+value within the XML tree. This allows us to change the XML tree by
+manipulating the first column. The first column can probably be
+manipulated with a regex. We'd have the ability to re-shape XML
+documents with regexps. :-)
+
+- Make sure that render() skips dcc control specs that are
+    unrecognized, or for which there is no dcc column. 
+
+- Q Should each dcc spec use a unique quoting mechanism?
+- A No. 
+
+- Q Should dcc prevent nested examples of itself?
+- A No, but there is no reason to nest dcc specs. This is a bad idea.
+
+- Create a compiled version of rerel().
+
+- compiles wrong.
+dump_stream("do_iter $step");
+Generates:
+dump_stream("do_iter "step"");
+
+- What bad thing happens when an "if" is assigning a column value?
+
+http://en.wikipedia.org/wiki/Conway's_Game_of_Life
+
+- All while-unwind loops probably need go_unwind, or something
+fundamental need to change.
+
+- x create a rerel that is hard coded to replace self_select in life.deft
+
+- x fix crush_on. missing go_unwind() in while-unwind. I think the eval() is wrong for new aliased var names.
+BTW, and eval is a sure sign that something needs to be compiled.
+
+- Noah: the deft compiler looks in '' strings and munges $vars. That would be fine 
+if the $var was going to get_eenv() but is wrong in all other cases.
+
+- + when no stream don't call a sub or run top code. See
+examples/recurse.deft.  The else clause is always run, but it
+shouldn't be run if there are zero records. Or should it? What if it
+created records?  In this case, it never exits. If top code isn't run,
+then what? Try next line, or skip to end of block?
+
+Instead of setting a var (see below), We might be able to make a pass
+through the code looking for blocks with the compiler. Check with
+Noah, but I think we don't want to call any subs that are inside a
+block.  Inside the top level of a sub is ok, but deeper than the first
+{} we should not call any Deft subs if the input stream is empty.
+
+Maybe we can set a flag in blocks that are "if-true" or "else" blocks
+to not call subroutines. We'd have to wrap sub calls which we don't
+(wrap) now. TOP calls would be unchanged.
+
+- Q code_ref->[2] is empty after add_unions(), but ok after
+mark_starts().  args are somehow not printing in dump_code. Without
+[2] we can't get a key to $args and we can't get the arg list for
+inc_depth() and we can't get args in user Deft subs.  
+
+- A First bug was that [2] was left behind in add_unions() when
+code_ref[][] lines were copied to @dest_ref. Fixed.  Second bug was
+that sub name was incorrectly being pulled from code_ref[][0] in
+dump_code() which made it seem like there was another bug.
+
+- x arg_list() doesn't have the complete list
+
+- x args are lost before they get to gen_start_stop();
+
+- x Values aren't being passed to any subroutines. Why not? The records are
+present, but not columns
+
+- The whole system of deft subs is a mess. mark_enclosing() is
+    exciting. Why dod we need this? Shouldn't the state of the stream be
+    invisible to lines of code?
+
+- x Something is wrong with patch_eenv() pe_unwind(), unwind(), etc.
+common_lib.pl parse_eenv(), st_lib.pl unwind()
+urh = unwind rewind hash?
+How did "109, 108, " get into $urh??
+Fixed: 
+sys_keys_eenv() was not sorting keys. Must sort same as raw_key.
+
+- patch_eenv debugs print. Either
+remove the debugs or fix them.
+
+- Vars w/o sigils compile. Fix and/or complain. 
+      read_tab_data("life.dat", x_cord, y_cord);
+
+- get rid of global $::in_stream and $::out_stream
+
+- use read_file() in runt_compile.pl compile_core().
+
+- Is there a new read_file() in session_lib.pm that calls sysread
+    until everything is read? There was a buffered read bug
+    somewhere. Maybe not here.
+
+- render() reads the template name every time it unwinds. This is
+conceptually wrong. This is a bad idea because if the template name
+changed the template(s) would almost certainly not render. Discuss
+with Noah, again.
+
+- If the Deft library path is added to @INC can we get rid of the
+    paths stuff in gen_shebang?
+
+- + convert config over to app_config and remove requirement for
+Postgres.  Look for the SQL stuff probably in do_sql_simple() and
+change over to app_config.
+
+- Separate common_lib.pl into subs necessary for compiling and subs
+necessary at runtime.
+
+- Use a closure for %db_handles? Package var is probably
+    better. Better if common_lib becomes a perl module.
+
+- Use the use lib feature to avoid the icky long paths
+
+- How is $::_d_path used? Can that be improved?
+
+- Can all the libraries be put into one Perl module?
+
+- Does munge_fn work with /name.html /name name ?
+
+- Add smarter logging. Maybe SQL based logging?
+
+- Check out: "finger trees", "stream fusion"
+
+- depth zero if needs stream_ok check also. 
+might need different format.
+
+- TOP can change structure pretty much any way; scalar code is limited
+to changes which don't create new records (more or less).
+
+- why do we have both deft_cgi() and cgi_make_row() in common_lib.pl?
+
+- what happens to the db handles when a compiled Deft .pl script exits?
+
+- postgres silently casts double to int?
+
+- I think the Deft compiler doesn't like $foo/$bar (needs spaces).
+See qcards/qc_lib.pl update_score_order().
+
+- make vars in function calls auto-vivify.
+
+- Check for other code that uses pointers to %eenv.
+
+- fix dcc() in the where arg, spaces are required in " > 0 "
+for some reason. Fix the where and sort args with a real fix.
+
+- do_sql_simple() is badly behaved if referenced vars don't exist.
+It really should die.
+
+- Fix do_sql_simple() to require use of ? and a list for vars
+instead of the current \$var usage.
+
+- fix $view_key when none of the cols in @view_list are being used in the
+current line of code, or when we don't have a @view_list (as happens in main()).
+
+- We don't always have a view_key in unwind.
+What effect does this have? I've hacked in a value, but it 
+is probably wrong/unnecessary.
+
+- keys_eenv() is not used consistently. We can't get
+aliased keys and feed them to subs expecting non-aliased keys
+and vice versa.
+
+- rewrite garbage_collection() to use the new column scope.
+
+- change inc_depth() to use $depth instead of the $sub_name
+and get rid of @sub_stack
+
+- garbage_collection() is clean my @new
+- save and manage max col number
+- if subs can create new cols that exist
+after the sub exits, then we need full heap management.
+
+- Use a trick with Perl ++ on strings.
+
+      my $xx = "z95";
+      foreach (0..9)
+      {
+	$xx++;
+	print "xx:$xx\n";
+      }
+
+
+- Add references to flow based programming to introduction.html
+
+- Merge the defindit web site with the Deft docs directory. 
+
+- note for docs: extra > after the first records probably
+means that the start count is -1 and should be -2. This
+happened with the content manager main_t.html. 
+
+- emacs: check out the speedbar.
+- wtf: evince pdf viewer?
+
+- + 3.0 Fix unwind() and rewind() in the internal API calls. 
+cars.pl (edited) dies between oe_two and oe_three.
+It is dying inside read_tab_data().
+- 3.01 Fix read_tab_data() in dcslib.pl
+- x 3.05 fix rewind to use the new rw data struct (which is incorrectly
+named since it should be "ur".
+- 3.1 Turn all the rw/uw local data into a hash. Create an init sub
+to make it simpler to call and simpler to update/fix in the future.
+Something like init_unwind_rewind() or init_ur()
+- 3.2 Then fix unwind() and rewind() calls and subs to 
+take the new hash of the current stream's bookkeeping vars.
+
+Q: Why is postusevars() necessary? All the vars are local to their block,
+so Perl should be taking care of cleaning up. Odd.
+
+- Write new sub neg_slice_key() that is complement of slice_key().
+
+- mem_cache and stream_cache could be internal, keyed by the stream id.
+
+- The code might be a little simpler if the view_key were pre-calculated
+and dropped into a column in the table. However, some records won't 
+need (?)
+
+- 1.15 Examine gen_agg for issues with new cols
+- 1.155 Recode patch_eenv and diff_eenv to use a @view_list_ref
+and a get_ref_eenv() thereby eliminating the need for local_eenv().
+- x 1.18 st_lib.pl Move %mem_cache into unwind() or the _eenv funcs.
+- x 1.185 st_lib.pl Move old_ref into unwind() when not patching.
+- x 1.19 st_lib.pl Move new_ref and diff_eenv into rewind.
+
+- + 1.195 fix calls to rewind() and unwind() in compiled code.
+
+- x 1.2 add inc_depth() or set_sub_name() to main() and all other subs.
+- 1.3 what is set_all_eenv() and does it need to be fixed for 
+col aliases, or should is be removed?
+- 1.4 local_eenv and diff_eenv and patch_eenv could either be trouble
+or may need major rewrites for aliased cols.
+- 1.5 fix neg_slice_eenv
+- x 1.6 cars.deft has a arg col mismatch for $dummy resulting in $_[]
+Also, $units is never defined, which should be ok.
+local_cols() was wrong. Fixed.
+- x 1.7 inc_depth() and how it is compiled are totally wrong.
+Need to have alias=col pairs.
+
+sub foo
+{
+    inc_depth("foo", $_[0], "bar", $_[1], "baz");
+
+
+- Does gen_agg() need patch/diff fix?
+
+- Fix args to dcc()
+
+- Fix args to do_search()
+
+- desc() crashes if no records match the where clause.
+
+- Do we have a column naming problem in main? Diagnose and fix this
+warning in the error log from running faq.pl
+Warning: do_search() can't search "main_faq_pk": field is not in recordset
+
+- Note somewhere that the where arg to dcc() must be 
+var op value and is parsed by a regex in runtlib:dcc()
+This is pretty icky. We can do better.
+We can at least warn if the format looks wrong.
+
+- + 1.1 Test faq.deft
+- x 1.2 Temporarily convert "var1,var2" into $var1 .",". $var2
+- 1.3 Talk to Noah about lists as args
+- 1.4 How to pass "$rank >=1" which compiles to "$main_rank >= 1"
+We haven't been interpolating strings at compile time. Do we need to start?
+- 1.5 [Thu Jan 18 23:20:09 2007] faq.pl: Can't use an undefined value as a HASH reference at /home/twl/public_html/deft/common_lib.pl line 517, <OR> line 7.
+- + 1.6 do_search() must start taking the findme column name as an argument
+since we now have scope.
+
+
+- A single extra " in the Deft source stops compilation, and goes undetected by the compiler.
+
+- x declare $run_once
+- x declare %_d_code_refs
+- x fix tween code_str
+- N fix tween get_args
+- x fix \n after if true
+- x fix \n\n after next_stack(), inc_depth()
+
+-1.1 Review the current gen_if if_param_fmt code. It
+looks close to finished.
+
+-1.2 Test the new code. It will require dropping debugs into the 
+fmt strings.
+
+- clean up the if ($view_list) in sub gen_varlist().
+
++2 Upgrade hash_slice_eenv() and slice_eenv().
+
+      my $comp_ref = hash_slice_eenv(@view); # get_ref_eenv(); 
+      # set_eenv for args
+      set_eenv($_[0], $fix_newvar_newvar);
+      my $ref_b = hash_slice_eenv(@view); # get_ref_eenv(); 
+      push(@{ $mem_cache{$view_key} }, diff_eenv($comp_ref, $ref_b));
+
+
+- Need to alias sub names to unique values so it isn't possible
+to create a conflict by clever naming of subs and variables.
+
+- Fix set_eenv() and garbage_collection() to understand new col names.
+
++1.0 Fix Deft source calls to use $col, and fix API internals that need
+multiple cols to use a var args style of calling via @_
+
+-1.1 We have a bug where the single quoted string '$str' will be changed
+to 'sub_str'. This should be fine for double quotes strings like  "$str"
+which are supposed to interpolate.
+
+-1.1 (No) set_eenv() needs to set sub_col when asked to work on col.
+
+-1.2 (No) get_eenv() needs to get sub_col when asked for col.
+
+-1.3 (No) get_eenv_ref() needs to return a hash of locally known cols
+and therefore needs to know which cols are aliased.
+
+-1.3.1 (No) fix other _eenv() calls to use sub_col
+
+-1.4 unwind() needs to shortcut unwinding duplicate rows, otherwise
+all the API calls will be wrong when called from subs.
+
+- When a var is first referred to in an arg list, it should be instantiated
+as a column. Right now, work around by creating the column first.
+
+- We could instantiate cols $1, $2, etc. for regex operations. This would enable
+regex binding to survive intervening top and Deft sub calls.
+
+- Remove blank lines after the %s code section in gen_scalar() and others.
+
+- Do we want Deft internal API calls to follow the parameterized column calling
+constraints? We could by making the stream data structure more complex
+and including the current view list. We would have to mark each column with a 
+"visible" flag. If we are going to flag columns, we might as well generalize
+that and allow "const" as well.
+
+- Turn Deft into a Perl module, and get rid of $::in_stream and $::out_stream
+Are these vars even necessary with a module/namespace? They could be 
+globals in the module, and totally hidden from the outside world. Yay!
+
+- Would it be really nasty (inefficient?) to instantiate a namespace for 
+each subroutine (or block) in order to prevent usercode from accessing
+Deft internal vars? We want to hide things liek @view, $::mem_cache, $view_key,
+$code_ref. We could have subs in the Deft module that keep a hash of this stuff,
+and we only allow access via exported subs.
+
+- How is dump_stream() supposed to work from inside Deft subs and their
+view of the table?
+
+- How do we allow a sub to read all columns? Typically, we want render()
+to read everything. A: render() is and API call, and they are different.
+
+- Add ability to handle literals as args to subs.
+Figure out what this even means.
+
+- sub compile_deft, L1465, Fix this to fix arg list format?
+
+- Two Deft subs with the same name will really mess things up,
+and we don't current check for this.
+
+- Will we ever want user Deft subs to read everything (all columns), or to be support varargs?
+
+- Does Ben Mosley realize the conniptions necessary to do scoping in a
+TOP environment? While this won't change the number of lines of
+source, it flies in the face of the assertion (not in the Tarpit
+paper) that TOP is theoretically no more computationally inefficient
+than normal imperative code.
+
+- deft: If all subs act on the global table, then subs need
+- a dcc()/render() like behavior so that a subset of the records
+are acted on. New cols in ignored records need to be created 
+based on some proto record as is usual for aggregation.
+
+- deft: should probably print a warning when dcc() is called
+on a non-existent column.
+
+- content_manager: Need a warning: using unitialized column.
+
+- content_manager: Need parameterized calls with writable cols.
+
+- Fix dispatch code, by adding $sub_name and $_[0]
+die "Error: dispatch on non-existent Deft subroutine $_[0]=$sub_name \"$_d_code_refs{$sub_name}\"\n";
+
+- ! make $newvar not a global in runtlib.pl
+
+- ! new TOP if statements make it impossible to use $1 from regex in
+the conditional clause.
+
+- ? Noah: Make a list of the fatal flaws of Deft. 
+What? well off the top of my head: slow, clumsy, verbose, poor 
+file system input support, poor db output support, strict rather than lazy,
+horrifing reflexive abilities, questionable syntax of all TOP functions,
+appearently non-existent learning curve (particularly bad for poularization
+since currently nowbody knows how to write it and if people never get better
+at creating deft code... well you do the math), and in that vein zero tool support
+
+If you could clarify what you're looking for I might be able to be more
+on point. Of course if this is what you want more power to you.
+
+
+- ? Is there way to get $1 working for regexps?
+We could create stand in variables for the various $[\d+] vars
+and populate them and remove them from the stream at the appropriate time.
+This is only marginally worse than the dichotomy created between backrefs
+and capture vars inside regexes themselves.
+
+
+- ? Could %code[1] be powers of two so we could use it as a bit field
+We could eliminate %is_last.
+
+
+- ? consider switch to array in gen_perl to simplify previous/next.
+
+
+- ? Move Deft API calls to a new library. 
+Seems ok stop calling them API calls.
+
+
+- ? Start using te_date for compile time stamp check. I guess
+it has to be returned by sql_exists_template() along with te_pk.
+
+
+- ? remove sql_new_stream() from *.pl
+
+- + assemble links to math proofs of fundamental concepts
+http://csdl2.computer.org/persagen/DLAbsToc.jsp?resourcePath=/dl/proceedings/&toc=comp/proceedings/icdm/2004/2142/00/2142toc.xml&DOI=10.1109/ICDM.2004.10098
+http://home.pipeline.com/~hbaker1/LinearLisp.html
+
+
+- + The only Deft operations that can overwrite an existing column are
+  scalar statements and aggregation operations which explicitly name
+  the column they will overwrite. Everything else, especially
+  do_sql_simple will die if asked to overwrite an existing column.
+
+
+- + The agg_simple conditional may need to be in a block to make
+  %unique and @key_list local. $pop_count is a problem because it is
+  created in the conditional, and used in the ags_start block.  Could
+  open a block at ags, and add another block close after push_multi().
+
+
+- + call_deft compiler extension
+
+- # call_deft($test); # becomes:
+
+$::in_stream = $prev_out;
+$::out_stream = $out;
+set_context("", $::in_stream, $::out_stream, "");
+push_context();
+eval(get_eenv("test"));
+
+
+- + Fix do_sql_simple() to use Perl DBI calls to see if there are
+  columns in the return data set. Looking for 'select' in the query is
+  not reliable due to subselects in insert, update, etc.
+
+
+- + Change over all calls to sql_new_ancestor() to include an fid arg.
+
+
+- + Test bench mark, write docs, check in
+
+
+- + Why did I have some hardcoded @logdir values? Commented out. Test this.
+
+
+- Pass by reference
+
+func($var1, $var2);
+
+sub func
+{
+      foreach my $var (@_)
+      {
+	dont_collect($var);
+      }
+}
+Um the use of @_ in the above is undoubtable a bad idea. try something more like:
+
+func(\$var1, \$var2);
+
+sub func(\$local_var1,\$local_var2)
+{
+}
+While repitition of the backslashes smacks of redundancy I think it would be valuable
+to create local reminders at both call and declaration of what is happening. Plus it 
+saves both assignment statements and compiler derectives from actual code.
+
+
+- Should set_eenv() check depth and not set vars in lower depths?
+
+
+- variables internal names are var.depth to avoid confusion.
+
+
+- ? What if we have named scope var.name?  This will be as bad as goto
+  best case.
+
+
+- Fix getting dsub name in compile() in common_lib.pl Need to preserve
+  prototype info. Now prototypes are lost.
+
+
+- aggregation is required in scalar operations when there are two or
+  more tables combined in the stream. If the stream had table
+  references (and appropriate iterative behavior) then the situation
+  would be more obvious. Scalar operations on a single table would
+  work as expected, and scalar operations on two or more tables would
+  require that the tables had been joined (or more complex operations
+  for one-to-many relations). Or perhaps it is better to say that in a
+  1N world, operations on a single table where the stream has two or
+  more tables, the single table operations have to be copied into 1N
+  form for the other tables (the "duplicate" records).  Close but no
+  banana, aggregation is actually required in scalar operations
+  period.  It must be understood that the compiler only commits to
+  evaluating expressions once for each distinguishable set of values
+  in the expression. If you for example have a monadic function
+  munging names in a table then everybody with the last name Smith can
+  in principle be calculated in a single call to that function and any
+  dependence the programmer has to multiple calls can and should fail.
+
+
+- Add uniqueness and non-repetition of scalar operations,
+which isn't quite aggregation, although we've called it aggregation.
+
+
+- For scalar aggregation need a combo dcc/render function that
+does the dcc, and does a single render-loop on the scalar lines
+in a block. An alternative would be to run dcc, make a new stream 
+selected and ordered as the dcc, and send this ordered stream 
+to the block of scalar operations.
+
+
+- garbage_collection() in common_lib.pl could play with stream values
+instead of and empty unwind/rewind loop when depth is zero.
+
+dec_depth();
+if (0)
+{
+      $::in_stream = pop_stack();
+      $::out_stream = next_stack();
+      garbage_collection();
+}
+
+
+- In order to implement scoping: With subroutines make a dcc column
+before calling. Duplicate this dcc column from the outside stream to
+the inner stream. When we return copy any colums still in the stream
+(scoping will remove extra columns) into their records based on
+matching the two dcc columns.  This shouldn't be technically
+complex. The downside is that subroutines suddenly gain a lot of
+overhead.
+
+
+- We should have a deftish eval basically an imbedded interpreter
+maintainling perl's eval statement is likly both nesicary and desirable
+from a performance stance if nothing else for now. Suggested name for 
+this function run or code calling should look like (regex):
+code\((["'])(.*?)(?<!\\)\1\); 
+$1 eq '"' ? $2 interpolated : $2 literal
+
+code\(render\('<-',[<render args char class>]*\)\);
+this introduces a new sytax for render where if its first arg has
+the value <- then it return the rendered string for storage in a 
+scalar in this case the render should run first to create the string
+to be executed by the controling function
+
+
+- Generalize having deft function return values through the <- string
+in place of the variable name list
+
+
+- C keep() is a bad idea in a global Deft (or in general).
+State columns go away and things infinitely loop. 
+
+
+- C Min item_order must be 1, not zero. This is probably due to the 
+hard coded "2" in page_gen.
+
+
+- C something is really wrong since I can never tell what columns
+are active. See item_search() in index.deft. I've undef'd columns
+at least 3 times.
+
+
+- C # Fix sub test, content_manager/index.deft
+- # this is here to dispatch each group of records to
+- # separate parts of the state machine, as appropriate.
+- # Probably doesn't totally work since there's only one(?) each of:
+- # next_state, _d_order, _d_state, etc.
+- # ... Although, each of those vars exists in each record, so it might work.
+The keep() is kind of a bad idea, unless is keeps values based on each record.
+(which I guess it must).
+
+
+- C When you can't find a log file that you know was written, try looking
+on the correct host.
+
+
+- C eval($column) fails where $column contains a Deft subroutine name
+because eval() is not a Deft function, and therefore is wrapped
+as a scalar statement. The subroutine is invoked, but with an empty stream.
+
+
+- C Noah: does alternation effect $1 $2? Why not first match is $1?
+(foo)|(bar) give $1 eq foo and $2 eq bar, but (foo|bar) $1 will
+be which matched. common_lib.pl, sub mark_sub_calls().
+    	$_d_result = eval($_d_test);
+
+
+- C agg_simple compiler output example
+
+
+- C I think Noah's idea is the push_multi()/join_multi().
+pushing $final would probably work, but would require
+at least a join_streams() for every iteration of the code loop.
+sub stuff
+{
+      $::in_stream = pop_stack();
+      $::out_stream = next_stack();
+      my %unique;
+      my $pop_count = 0;
+      my @key_list = %s; # $key_code;
+      while(unwind())
+      {
+	$key = join(\' ,\', @{slice_eenv(\@key_list)});
+	if (! exists($unique{$key}))
+	{
+ 	    $unique{$key} = next_stack();
+ 	    $pop_count++;
+	}
+	$::out_stream = $unique{$key};
+	rewind();
+      }
+      while($pop_count >= 0)
+      {
+	$pop_count--;
+
+
+- C Clearly "my"ing variables is evil since its 3 extra characters.
+We should blithly laugh and never my a variable ever again :)
+
+
+- C Noah totally renounces composite scalars I pushed my thoughts into a hallucinatory state
+we won't revist composite scalars until after we have a strong type system.
+
+
+- C perl -MO=Showlex cars_if.deft | less
+ B::Deparse
+
+
+- C touch -d'2006-02-15' tmp.txt
+find ./ ! -newer  tmp.txt   | wc -l
+find ./ ! -newer  tmp.txt   | less
+find ./ ! -newer  tmp.txt -exec rm {} \;
+
+- C main:
+{
+      # $depth initialized with 1.
+      while(unwind())
+      {
+	my $var = get_eenv("var");
+	$var = "lkjaflkjf";
+	set_eenv("var", $var); # marks var with depth is var has no depth. 1 is min depth.
+	rewind();
+      }
+      mysub(); # look inside mysub for inc_depth, dec_depth
+      garbage_collection(); # for mysub
+      table_func("string"); # must to do own garbage collection.
+      
+}
+
+
+- C sub mysub
+{
+      inc_depth();
+      # the usual pop_context...
+      while(unwind())
+      {
+	my $local_var = get_eenv("local_var");
+	$local_var = "lkjaflkjf";
+	set_eenv("local_var", $local_var); # marks var with depth is var has no depth. 1 is min depth.
+	rewind();
+      }
+      dec_depth();
+}
+
+- C Profiling:
+perl -d:DProf ../deft_st.pl test.deft
+dprofpp tmon.out
+
+
+- C Not sure what this could mean recursion is recursion for use when data must be
+processed through the same instructions some algorithmically determined number of times
+
+
+- C Noah: new (auto-viv) vars should init to '' (e.g. Perl behavior)
+ See. cars_if.deft and $make (which is reference before being assigned
+in Deft although it is now assigned by get_eenv() in the compiled Perl
+version. 
+
+
+- C things that shave of tiny bits of time in queries:
+drop indexes
+don't use sequences for default values
+
+
+- C _tcp version isn't working, but it's close
+
+
+- C Add a do_search() warning string and maybe a switch to 
+log do_search(). references to do_search arn't relevent to deft posible 
+seperate file for Tom's projects?
+
+
+- C We need to stop using the term API to refer to functions that will
+be prevalent in code or we need to drop the pretence that we are writing a language.
+
+
+- C What is set_all_eenv()? imports whaterver the current environment contains
+into the namespace
+
+
+- C do_search (or some CGI stuff) doesn't deal with special characters
+like $. Allow quoting in searches? see previous comment
+
+
+- C Trap undef from thaw() in unwind. Duplicate
+
+
+- C http://search.cpan.org/~bmorrow/PerlInterp-0.03/Perl.pm
+
+
+- C (next release) Create suid deft info retriever and initializer. 
+Get info for this user from deft db, start process chain and make it owned by user,
+hand back an info hash. 
+
+
+- C (next release) Think about security needs for deft_st.pl
+
+
+- C (next release) Make deftd.pl sanity check out_stream_id against ... something.
+
+
+- C (next release) Make sure user's can't access Deft db.
+
+
+- C (next release) Add security to deft db. Records need ownership.
+
+
+- C (next release) Make sure Deft only connects to authorized dbs for users.
+
+
+- C Make do_search() barf if not correct number of args.
+
+
+- C Other code could use te_pk instead of looking it up again.
+
+
+- C Implement the bit of code to move passwords to a separate file,
+    and document this. Duplicate
+
+
+- C Noah says to just go from sql_unwind() to the restored vars 
+which he thinks already happens in do_sql_simple().
+This isn't relevant because we compile to Perl which uses get_eenv
+instead of restorevars.
+
+
+- C Table notes
+-----------
+- Noah says: table() function needs to be written first.
+- table() contains info about set of cols in some named table
+- table() function creates alg. genned cols required for table joins
+1) set of col name to variable name correspondence
+2) cols which don't have variables (alg. determined columns make up the difference)
+3) what the algorithms are that generate the extra columns.
+In general, "key" columns are the only cols that don't come from a typical deft variable.
+- merge() update() insert() replace()
+called with table name (a table we've set up)
+- # end table notes.
+- # Notes about "concurrent parallelism" which we've decided
+- # should wait for the grid version
+- run everything up to set_list(set list name)
+- Build a new chain
+- do <set list name> on <some code here> # repeats
+- set_list() creates a deft recordset, freeze the
+record set, and put the frozen copy in a hash in eenv, either as a hash
+or as a sub hash of {set_list}.
+- {set_list} is a hash of array of hashes
+{set_list}{set list name}[record index]{variable}
+- need a marker for the {set_list} for each do statement.
+- do() stops instantiating nodes when it's index is size of [record index]
+- The last node instantiated stops building dirty/clean records.
+- need clean and dirty records passed through rewind and unwind
+and all that they imply.
+- Need new restorevars to instantiate set_list vars which becomes the dirty copy.
+- Don't warn programmer if var in set_list is not the same thing below.
+- eenv needs marker to track current index of do(). b
+because we can't just shift the elements off {id}.
+- each newly created concurrent node needs to pass on a pristine
+copy of the data, and a dirty copy of the data (each record).
+
+
+- T content_manager also expects image_order values to not all be the same.
+Unknown if duplicates will work. (probably not).
+
+
+- T content_manager/index.deft maybe item_search()
+Warning: Field isn't in list of approved fields:valid_content
+When stream is empty?
+
+
+- T Is it a good idea (or necessary) that scripts set _d_state?
+e.g. page_search.html
+
+
+- T content_manager/index.deft has $_d_func, Do we still need to support this?
+
+
+- T Noah: need to parse search strings. Should only use abc: as field if there 
+is a field with that name, other wise it is merely the string "abc:". Keep the :
+and keep . and _ and leading + but turn internal + into space.
+Also, all regexes must be secure from hacking, so any dangerous strings 
+must be parsed out and removed.
+
+
+- T Noah: write a do_search() search math parser that is robust
+and won't expose any "interesting" user input to the command line
+(or to regexes which can be made to execute).
+
+
+- T Test pure Deft do_search.
+
+
+- T Need a check for duplicate graph name for the same user.
+
+
+- T Need better error message at line 588 in sql_lib.pl for duplicate
+graph name.
+
+
+- T Try to combine sql_clear_graph and sql_clean_graph.
+
+
+- T When machine.pl inits, stat graph, states, templates and reload as necessary.
+Fix related problem deftd.pl must not try to recomile templates since the template
+is probably on another host.
+
+
+- T In the mp environment, machine.pl iterates if ! wait 
+
+
+- T load_graph.pl needs more error checking with the regexes
+
+
+- T Check return value vis-a-vis machine.pl with new user subs
+If the last line of main is a user sub, does it break the machine?
+
+
+- T Fix search help text. It is wrong in a couple of spots and will also
+need to be correct when (-) handling is fixed.
+
+
+- T Don't load deft scripts that aren't referenced by the graph.
+e.g. not referenced in table edge.
+
+
+- T Get rid of node table. Nodes a defined only by edges.
+
+
+- T Add "clear" to load_graph.pl and machine.pl. Noah says syntactic
+sugar is fine. It would look like this:
+page_search "site_gen" clear,site_gen
+which would clear the variable site_gen before transitioning to state
+label site_gen. Give graph ability to zero out a var so it isn't true
+on the next pass through the machine unless it was explicitly set?
+
+
+- T Merge next_node with ginfo in the params to machine.pl
+
+
+- T Warn users if there is a graph of the same name and log name but in
+    a different directory?
+
+
+- T load_states.pl should not load a graph as a Deft script.
+(should refuse to load things that are patently not scripts).
+Maybe.
+
+
+- T draw_all.deft needs to do something to guarantee order stays the same.
+
+
+- T Should the machine.pl run the code.source with the same name as 
+the graph_name if graph.graph_name doesn't exist in the db?
+
+
+- T Can we make "save" after insert go back to draw_all, instead
+of redrawing the edit page again?
+
+
+- T Disable OUT logging from machine.pl
+
+
+- T Is it cool to symlink machine.pl and have it look at $0 if it didn't have
+- a valid graph name? The symlink would be the same name as the graph,
+then all the web pages don't have to have the graph name hard coded.
+
+
+- T Need a warning if the user asks do_search() to search on 
+    a field that is not a defined searchable field. i.e. bf_pk:169
+(although I've since added bf_pk to the def search arg in do_search's call
+in draw_all.deft).
+
+
+- T Does !zero_bf_pk work? probably irrelevent
+
+
+- T Need a cleaner to get rid of unused code. If there isn't a graph
+that references a code record, then it must be save to delete.
+Perhaps load_graph should always do this. Does it already do it in 
+sql_clean_graph()? (probably not since code is managed in load_states.pl)
+
+
+- T Create dev db users: deft_dev, bug_pages_dev
+
+
+- T Create dev dbs: deft_dev, bug_pages_dev
+
+
+- T Make machine.pl spew a web page with usage.
+Perhaps it should not list available graphs due to privacy.
+
+
+- T Die with error, if the graph name is missing from a .graph file.
+
+
+- T We're going to need a way to keep all the different nodes/edge names unique
+across all developers on a system. Or have a sharing system.
+
+
+- T Maybe load_states.pl and load_graph.pl should change to a checkin/checkout
+model. Noah already suggested this. 
+
+
+- T The returned hash from sql_load_edges() could be simplified.
+
+
+- T Need a "report_graph.pl" that reads db and spews a graph in human
+readable format.
+
+
+- T load_graph.pl needs to ignore blanks, ignore comments
+
+
+- T load_graph.pl "true" is a test that is always true? or _true or 1 or _true_
+
+
+- T Fix * not working in do_search(), although *a works.
+
+
+- T Make albus make it's deft call to hagrid and hagrid becomes the deft server?
+
+
+- T Fix default_findme. (uses code for command line args too)
+
+
+- N Can we have (do we need?) join/union flags on all Deft calls? Or
+is the only problem with do_sql_simple()?
+
+
+- N (Don't fix this, just stop using it.)
+call_deft() calls in original Deft are not parsed properly.
+Need to substitute for call_deft("arg"); for arg();
+
+
+- N re: removing comments from Deft source, Noah says that splitting the 
+source into even/odd listy things and ripping the comments 
+from even elements then concatenate it all back together.
+
+
+- N see gen_stream_code(). Is it correct to always 'my $false_stream;' ?
+
+
+- N New get_block. Use strings instead of the array idea.
+Regexps are good.
+
+
+- N Try (test?) to get speed by changing eenv code to use
+ref of eenv instead of copying eenv. Or not.
+
+
+- N Could create dcc() where the col has optional "dont' care" ordering
+which saves rendering the col inside dcc_if(). Noah suggests using numbers for 
+dcc's col when there is don't care ordering. 
+
+
+- N common_lib.pl crush_on() doesn't work. In part, it includes an element
+{data} that contains a hashref. Needs a fix and docs. Crush_on was ill concieved
+and shouldn't be revived distinct_on and a properly functioning rewind are 
+sufficient.
+
+
+- N Does if_col() work? Create tests for it. Who cares if_simple exists
+
+
+- N Fix st version of if_col.
+
+
+- N Allow several Deft "main:" subs to live in the same file.
+We talked about this. Noah had some ideas, but this doesn't make sense.
+
+
+- N Get the st version to stop trying to clean stream_column.
+
+
+- N Need a write_tab_data(). That will be a problem since we don't know what machine
+- a node runs on. For now it may assume single machine. dump stream does whatever this could do.
+
+
+- N How to deal with the case where we want render() called on each record?
+backtick a deft script?
+1) execute in middle ala macro
+2) cross multiply or concat (not supported) output of backticked with current stream
+3) Wye to backticked scripted, nothing returned.
+4) run backticked script once per record
+5) agg_simple
+
+

@@ -1,0 +1,96 @@
+require "testlib.deft";
+
+ main:
+{
+    $newvar = "init";
+    $newvar =~ m/(ini)/;
+    $tvar = $1;
+    if (! $make)
+    {
+	$make = "stuff";
+    }
+    read_tab_data("./demo.dat",$sequence,$make,$model,$displacement,$units);
+    # dump_stream("main_1");
+    if ($make =~ m/ford/i)
+    {
+	$ford_flag = 1;
+    }
+    else
+    {
+	$ford_flag = 0;
+    }
+
+    # Call a Perl subroutine that counts string characters the hard way.
+    $mlen = cvar($make);
+
+    # convert displacement to liters
+    if ($units eq "cid")
+    {
+	$displacement = (16.39 * $displacement) / 1000;
+    }
+    else
+    {
+	if ($units eq "cc")
+	{
+	    $displacement = ($displacement / 1000);
+	}
+    }
+    if ($units eq "cup")
+    {
+	$displacement = ($displacement * 0.236588237);
+    }
+    
+    # Verify that the compiler won't choke on strings
+    # containing special characters
+    $test_strings = "icky?})#";
+
+    $original_units = $units;
+    $units = "cc";
+
+    deft_uc($units, $make, $sequence);
+    deft_uc($units, $model, $sequence);
+
+    # dump_stream("main_1.1");
+    udump($make, $model);
+
+    $newvar = "second change";
+
+    dcc($dcc_disp, list($model, $displacement), [""],[$model . ",at", $displacement . ",an"]);
+    dcc($dcc_make, $make, [""],[$make . ",at"]);
+
+    # dump_stream("main_2","make,model,displacement,dcc_disp,dcc_make");
+
+
+    $file_name = "-";
+    $template = "cars2_t.txt";
+    render($file_name,$template,"");
+}
+
+sub deft_uc($dummy, $str, $order)
+{
+    # Besides upper casing $str, what does this do? $units isn't
+    # passed in, so it is local only and meaningless.
+
+    # read_tab_data("./demo.dat",$sequence,$make,$model,$displacement,$units);
+    $units++;
+    $str = ucfirst($str);
+    $order++;
+    dump_stream("deft_uc");
+}
+
+# A Perl subroutine. It will not be compiled to Deft, 
+# and Deft will wrap any calls to this sub with an unwind/rewind loop.
+perl cvar
+{
+    my $str = $_[0];
+    my $xx = 0;
+    while ($str =~ m/./g)
+    {
+	$xx++;
+    }
+    return $xx;
+}
+
+# At one time, trailing comments or comments outside subroutines
+# broke the compiler.
+# $a = 1+2;

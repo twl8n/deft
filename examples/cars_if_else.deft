@@ -1,0 +1,27 @@
+ main:
+{
+    read_ws_data("/home/twl/public_html/deft/demo.dat",$sequence,$make,$model,$displacement,$units);
+    if ($units eq "cid")
+    {
+	$displacement = "simple if";
+	# dump_stream();
+    }
+
+    dump_stream("after simple");
+    
+    $tween = 1;
+    
+    if ($units eq "cid")
+    {
+	$displacement = "if of if-else";
+    }
+    else
+    {
+	$displacement = "else of if-else";
+    }
+    
+    $tween = 2;
+    
+    dump_stream();
+}
+

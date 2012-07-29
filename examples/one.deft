@@ -1,0 +1,5 @@
+main:
+{
+    dump_stream();
+}
+

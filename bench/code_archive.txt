@@ -1,0 +1,591 @@
+sub sql_read_prep
+{
+    my $q_name = "sql_read_prep";
+    my $dbh = $_[0];
+    my $sr_in = $_[1]; # reader's read_stream
+
+    my $sql = "select data from stream_row where sr_in=$sr_in and marked=1";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$dbi::errstr\n"; }
+    return $sth; 
+}
+
+# Read records from the intermediate read stream.
+# Check upstream to see if we should continue.
+sub sql_read_execute
+{
+    my $q_name = "sql_read_execute";
+    my $sth = $_[0];
+    my $rows = $sth->execute(); # reads read_stream 
+    if ($sth->err()) { die "$q_name 2\n$dbi::errstr\n"; }
+    if ($rows > 0)
+    {
+	return 1;
+    }
+    else
+    {
+	return 0;
+    }
+}
+
+sub sql_read
+{
+    my $q_name = "sql_prototype";
+    my $dbh = $_[0];
+    my $sth = $_[1];
+    my $sr_in = $_[2];
+
+    my $go_flag = 1;
+    my $have_record = 0;
+    my $data = undef;
+    while (! $have_record && $go_flag)
+    {
+        if (($sth->{Active}) && (($data) = $sth->fetchrow_array()))
+        {
+            $have_record = 1;
+        }
+        else
+        {
+            # delete marked records in stream_row
+            sql_update_stream($dbh, $sr_in);
+            if (sql_mark($dbh, $sr_in))
+            {
+                $dbh->commit();
+		print "Commiting\n";
+                # select marked records from stream_row
+                $go_flag = sql_read_execute($sth);
+            }
+            else
+            {
+                # select is_active from stream_flags, select unmarked from stream_row
+                $go_flag = upstream_done($dbh, $sr_in);
+            }
+        }
+    }
+    return $data;
+}
+
+sub lock
+{
+    # see "set transaction"
+    # SET TRANSACTION ISOLATION LEVEL { READ COMMITTED | SERIALIZABLE }
+    my $q_name = "upd";
+    my $dbh = $_[0];
+    # my $sql = "lock stream_row  in row exclusive mode";
+    my $sql = "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+}
+
+
+sub sql_check_sf_pk
+{
+    my $q_name = "sql_check_sf_pk";
+    my $dbh = $_[0];
+    my $sf_pk = $_[1];
+    my $sth = $dbh->prepare("select sf_out,reader_id from stream_flags where sf_pk=$sf_pk");
+    if ($dbh->err()) { 	die "doq $q_name 1\n$DBI::errstr\n";  }
+    $sth->execute();
+    if ($dbh->err()) { 	die "doq $q_name 2\n$DBI::errstr\n";  }
+    (my $sf_out, my $reader_id) = $sth->fetchrow_array();
+    print "check sf_out:$sf_out
+ reader_id:$reader_id\n";
+
+}
+
+sub sql_read_fetch
+{
+    my $q_name = "sql_read_fetch";
+    my $sth = $_[0];
+    my $data;
+    if (($data) = $sth->fetchrow_array())
+    {
+	return $data;
+    }
+    else
+    {
+	return undef;
+    }
+}
+
+# Init a family of streams, all active, none have readers yet.
+sub xsql_init_streams
+{
+    my $q_name = "sql_init_streams";
+    my $dbh = $_[0];
+    my @id_list = @{$_[1]}; # writer inits, writer writes to st_id
+
+    my $sql = "insert into stream_flags (is_active, reader_id) values (?,1,'none')";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    foreach my $st_id (@id_list)
+    {
+	# $dbh->do("insert into stream_flags (st_id, is_active, reader_id) values ($st_id,1,'none')");
+	$sth->execute($st_id);
+	if ($dbh->err()) { die "$q_name 2 s:$st_id sql:$sql\n$DBI::errstr\n"; }
+    }
+}
+
+use strict; 
+use DBD::Pg qw(:pg_types);
+
+sub sql_prototype
+{
+    my $q_name = "sql_prototype";
+    my $dbh = $_[0];
+    my $sql = "";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { 	die "doq $q_name 1\n$DBI::errstr\n";  }
+    $sth->execute();
+    if ($dbh->err()) { 	die "doq $q_name 2\n$DBI::errstr\n";  }
+}
+
+sub sql_next_in
+{
+    my $q_name = "sql_next_in";
+    my $dbh = $_[0];
+
+    my $ppid = getppid();
+    my $hostname = `hostname`;
+    chomp($hostname);
+    print "h:$hostname:$ppid\n";
+
+    my $st_id;
+    my $rows = 0;
+    my $sth = $dbh->prepare("select st_id from stream_flags where reader_id='none' order by st_id limit 1 for update");
+    while($rows == 0)
+    {
+	$rows = $sth->execute();
+	if ($dbh->err()) {  die "doq $q_name 1\n$DBI::errstr\n";  }
+    }
+    ($st_id) = $sth->fetchrow_array();
+    $dbh->do("update stream_flags set reader_id='$hostname:$ppid' where st_id=$st_id");
+    if ($dbh->err()) {  die "doq $q_name 2\n$DBI::errstr\n";  }
+
+    if (1)
+    {
+	my $sql = "select * from stream_flags where reader_id='$hostname:$ppid'";
+	my $sth = $dbh->prepare($sql);
+	if ($dbh->err()) { 	die "doq $q_name 1\n$DBI::errstr\n";  }
+	$sth->execute();
+	if ($dbh->err()) { 	die "doq $q_name 2\n$DBI::errstr\n";  }
+	while(my $hr = $sth->fetchrow_hashref())
+	{
+	    foreach my $item (keys(%{$hr}))
+	    {
+		print "s:$item $hr->{$item}\n";
+	    }
+	}
+    }
+
+    print "reading $st_id\n";
+    return $st_id;
+}
+
+# Init a family of streams, all active, none have readers yet.
+sub sql_init_streams
+{
+    my $q_name = "sql_init_stream";
+    my $dbh = $_[0];
+    my @id_list = @{$_[1]}; # writer inits, writer writes to st_id
+
+    foreach my $st_id (@id_list)
+    {
+	$dbh->do("insert into stream_flags (st_id, is_active, reader_id) values ($st_id,1,'none')");
+	if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    }
+}
+
+# Streams are created active, and I can't see a reason to
+# have a separate activation step.
+# sub sql_activate_stream
+# {
+#     my $q_name = "activate_stream";
+#     my $dbh = $_[0];
+#     my $st_id = $_[1]; # writer activates its output stream after first write.
+
+#     my $sql = "update stream_flags set is_active=1 where st_id=$st_id";
+#     my $sth = $dbh->prepare($sql);
+#     if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+#     $sth->execute();
+#     if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+# }
+
+# After the last data has been written to a stream, inactivate it.
+# This is "inactive" in the sense that the writer is finished writing.
+# The reader may still be reading from this stream.
+sub sql_inactivate_stream
+{
+    my $q_name = "inactivate_stream";
+    my $dbh = $_[0];
+    my $st_id = $_[1]; # writer inactivates its output stream after last write
+
+    my $sql = "update stream_flags set is_active=0 where st_id=$st_id";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+}
+
+sub sql_prep_write
+{
+    my $q_name = "sql_prep_write";
+    my $dbh = $_[0];
+    my $st_id= $_[1]; # writer's out_stream
+
+    # streams are all set to active in sql_init_streams
+    # $dbh->do("insert into stream_flags (st_id, is_active) values ($st_id,1)");
+    my $sql = "insert into stream_row (st_id_fk,data) values ($st_id,?)";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    return $sth;
+}
+
+sub sql_write
+{
+    my $q_name = "sql_write";
+    my $sth = $_[0];
+    my $data = $_[1];
+
+    $sth->bind_param(1,$data, { pg_type => PG_BYTEA });
+    if ($sth->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $sth->execute();
+    if ($sth->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+}
+
+sub sql_read_prep
+{
+    my $q_name = "sql_read_prep";
+    my $dbh = $_[0];
+    my $st_id = $_[1]; # reader's read_stream
+
+    my $sql = "select data from stream_row where st_id_fk=$st_id";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$dbi::errstr\n"; }
+    return $sth; 
+}
+
+# Read records from the intermediate read stream.
+# Check upstream to see if we should continue.
+sub sql_read_execute
+{
+    my $q_name = "sql_read_execute";
+    my $sth = $_[0];
+    my $rows = $sth->execute(); # reads read_stream 
+    if ($sth->err()) { die "$q_name 2\n$dbi::errstr\n"; }
+}
+
+sub sql_read_fetch
+{
+    my $q_name = "sql_read_fetch";
+    my $sth = $_[0];
+    my $data;
+    if (($data) = $sth->fetchrow_array())
+    {
+	return $data;
+    }
+    else
+    {
+	return undef;
+    }
+}
+
+my $data;
+my $fetch_flag = 0;
+my $rc = 0;
+
+# Read records from the intermediate read stream.
+# Check upstream to see if we should continue.
+sub sql_read
+{
+    my $q_name = "sql_read";
+    my $dbh = $_[0];
+    my $sth = $_[1];
+    my $in_stream = $_[2];   # input stream
+    my $read_stream = $_[3]; # read stream
+    my $out_stream = $_[4];  # output stream
+
+    my $go_flag = 0;
+    $data = undef;
+    if (! $fetch_flag)
+    {
+	sql_mark($dbh, $in_stream, $read_stream);
+	if (my $rows = $sth->execute())
+	{
+	    # execute reads read_stream 
+	    if ($dbh->err()) { die "$q_name 2\n$dbi::errstr\n"; }
+	    $fetch_flag = 1;
+	}
+    }
+    if ($fetch_flag)
+    {
+	($data) = $sth->fetchrow_array();
+	$rc++;
+	$go_flag = 1;
+    }
+    else
+    {
+	$go_flag = upstream_done($dbh, $in_stream);
+	sql_update_stream($dbh,$read_stream, $out_stream);
+	$dbh->commit();
+	$fetch_flag = 0;
+    }
+    return ($go_flag, $rc, $data);
+}
+
+# Move input stream records to read stream with an update.
+sub sql_mark
+{
+    my $q_name = "sql_mark";
+    my $dbh = $_[0];
+    my $in_stream = $_[1];   # input stream 
+    my $read_stream = $_[2]; # reading stream (intermediate)
+
+    my $sql = "update stream_row set st_id_fk=$read_stream where st_id_fk=$in_stream";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    my $rows = $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$sql\n$DBI::errstr\n"; }
+    if ($rows > 0)
+    {
+	print "marked:$rows\n";
+	return 1;
+    }
+    return 0;
+}
+
+# move records from read to output.
+sub sql_update_stream
+{
+    my $q_name = "sql_update_stream";
+    my $dbh = $_[0];
+    my $read_stream = $_[1]; # read stream (intermediate)
+    my $out_stream = $_[2];  # output stream
+    my $sql;
+    my $sth;
+    my $rows;
+    
+    $sql = "update stream_row set st_id_fk=$out_stream where st_id_fk=$read_stream";
+    $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $rows = $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$sql\n$DBI::errstr\n"; }
+    if ($rows > 0)
+    {
+	print "upd:$rows\n";
+    }
+}
+
+# Assume the writer starts before the reader, so there 
+# won't be a case of not finding a stream_flag record.
+
+sub upstream_done
+{
+    my $q_name = "upstream_done";
+    my $dbh = $_[0];
+    my $st_id = $_[1]; # reader's input stream
+
+    my $sql = "select is_active from stream_flags where st_id=$st_id and is_active=1";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    my $flag_rows = $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+    
+    $sql = "select st_id_fk from stream_row where st_id_fk=$st_id limit 1";
+    $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 3\n$DBI::errstr\n"; }
+    my $data_rows = $sth->execute();
+    if ($dbh->err()) { die "$q_name 4\n$DBI::errstr\n"; }
+    
+    if ($flag_rows == 0 && $data_rows == 0)
+    {
+ 	return 0;
+    }
+    return 1;
+}
+
+sub lock
+{
+    # see "set transaction"
+    # SET TRANSACTION ISOLATION LEVEL { READ COMMITTED | SERIALIZABLE }
+    my $q_name = "upd";
+    my $dbh = $_[0];
+    # my $sql = "lock stream_row  in row exclusive mode";
+    my $sql = "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+
+
+
+}
+
+1;
+#!/usr/bin/perl
+
+use strict;
+
+main:
+{
+    system("./bench_write.pl&");
+    print "Write running\n";
+    system("./bench_read.pl&");
+    print "Read running\n";
+}
+#!/usr/bin/perl
+
+use strict;
+use DBI;  # qw(:sql_types);
+use DBD::Pg qw(:pg_types);
+
+use Storable qw(freeze thaw);
+
+require "./lib.pl";
+
+main:
+{
+    my $dbargs = {AutoCommit => 0, PrintError => 0};
+    my $connect_string = "dbi:Pg:dbname=test;";
+    my $dbh =  DBI->connect($connect_string,
+			    "test",
+			    "stuff",
+			    $dbargs);
+
+    # Clean up before starting.
+    $dbh->do("delete from stream_flags");
+    $dbh->do("delete from stream_row");
+    $dbh->commit();
+
+    my $in_stream = 0;
+    my $read_stream = 0;
+    my $out_stream = 1;
+
+    my $iter = 20000;
+    my $commit_interval = 4000;
+    my %dhash;
+    $dhash{one} = "this is small data payload 1 of 3";
+    $dhash{two} = "this is small data payload 2 of 3";
+    $dhash{three} = "this is small data payload 3 of 3";
+    my $data = freeze(\%dhash);
+
+    my @id_list = (1,3);
+    sql_init_streams($dbh, \@id_list);
+    my $sth = sql_prep_write($dbh, $out_stream);
+    
+    for(my $xx=0; $xx<($iter+1); $xx++)
+    {
+	sql_write($sth, $data); # see sql_write_prep above.
+	if (($xx % $commit_interval == 0) && $xx > 0)
+	{
+	    $dbh->commit();
+	}
+    }
+    $sth->finish();
+    sql_inactivate_stream($dbh, $out_stream); # bench_lib.pl
+    $dbh->commit();
+    print "Write $iter done.\n";
+    $in_stream = $out_stream+2;
+    $read_stream = $in_stream+1;
+    $out_stream = $read_stream+1;
+
+    my $saved_data;
+    my $go_flag = 1;
+    my $row_count;
+    $sth = sql_read_prep($dbh, $read_stream);
+    while($go_flag)
+    {
+	if (my $data = sql_read_fetch($sth))
+	{
+	    $saved_data = $data;
+	    $row_count++;
+	}
+	else
+	{
+	    sql_update_stream($dbh,$read_stream, $out_stream);
+	    $dbh->commit();
+	    if (sql_mark($dbh, $in_stream, $read_stream))
+	    {
+		sql_read_execute($sth);
+	    }
+	    else
+	    {
+		$go_flag = upstream_done($dbh, $in_stream);
+	    }
+	}
+    }
+    $sth->finish();
+    $dbh->commit();
+    $dbh->disconnect();
+
+    print "Read completed $row_count rows on stream $in_stream.\n";
+    my $href = thaw($saved_data);
+    foreach my $item (keys(%{$href}))
+    {
+	print "key:$item value:$href->{$item}\n";
+    }
+}
+
+
+#!/usr/bin/perl
+
+use strict;
+use DBI; #  qw(:sql_types);
+use DBD::Pg qw(:pg_types);
+use Storable qw(freeze thaw);
+
+require "./lib.pl";
+
+main:
+{
+    my $dbargs = {AutoCommit => 0, PrintError => 0};
+    my $connect_string = "dbi:Pg:dbname=test;";
+    my $dbh =  DBI->connect($connect_string,
+			    "test",
+			    "stuff",
+			    $dbargs);
+
+    my $in_stream = 1;
+    my $read_stream = $in_stream+1;
+    my $out_stream = $read_stream+1;
+
+    my $saved_data;
+    my $go_flag = 1;
+    my $row_count = 0;
+    my $sth = sql_read_prep($dbh, $read_stream);
+    while($go_flag || ! $row_count)
+    {
+	if (my $data = sql_read_fetch($sth))
+	{
+	    $saved_data = $data;
+	    $row_count++;
+	}
+	else
+	{
+	    sql_update_stream($dbh,$read_stream, $out_stream);
+	    $dbh->commit();
+	    if (sql_mark($dbh, $in_stream, $read_stream))
+	    {
+		sql_read_execute($sth);
+	    }
+	    else
+	    {
+		$go_flag = upstream_done($dbh, $in_stream);
+	    }
+	}
+    }
+    $sth->finish();
+    sql_inactivate_stream($dbh, $out_stream); # bench_lib.pl
+    $dbh->commit();
+    $dbh->disconnect();
+
+    print "Read completed $row_count rows on stream $in_stream.\n";
+    my $href = thaw($saved_data);
+    foreach my $item (keys(%{$href}))
+    {
+	print "key:$item value:$href->{$item}\n";
+    }
+    
+}

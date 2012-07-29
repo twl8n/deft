@@ -1,0 +1,30 @@
+
+# Read in a matrix of data from a file.
+# Mess with the data, and pass it to a recursive sub.
+# Use dump_stream to make sure the data is ok.
+# The original bug is that data is lost.
+# dump_stream() is wrong after read_tab_data().
+# There's no data at all in the subroutine.
+
+ main:	
+{		
+    naive_make_col('x_cord','101..105');
+    naive_make_col('y_cord','101..106');
+    # read_tab_data("life.dat", $x_cord, $y_cord);
+    $position = $y_cord . $x_cord;
+    $state = int(rand(2));
+    $step = 1;
+    dump_stream("one");
+    do_iter($x_cord, $y_cord, $step, $state);
+}
+
+sub do_iter ($x_cord, $y_cord, $step, $state)
+{
+    dump_stream("do_iter");
+    $step++;
+    if ($step < 3)
+    {
+ 	do_iter($x_cord, $y_cord, $step, $state);
+    }
+}
+

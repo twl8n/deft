@@ -1,0 +1,20 @@
+# Stream Test Top (b)
+# Create an if statement which will have TOP code called in an empty stream.
+
+# What does matter is that if we have popped the stack, we put something else
+# back on. Popping to get the input stream must be paired with a next stack call
+# to create an output stream. 
+
+
+main:
+{
+    read_tab_data("../demo.dat",$sequence, $make, $model, $displacement, $units);
+    if ($make =~ m/argle/i)
+    {
+	dump_stream("argle");
+    }
+    else
+    {
+	dump_stream("not argle");
+    }
+}

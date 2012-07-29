@@ -1,0 +1,63 @@
+
+# memnonic: "cars if nested (b)"
+# Using letters and no underscore since I was typing these file names
+# way too many times during debugging and testing.
+# Test nested if-else statements.
+# One of several serious bugs was that the outer "else" got all the data that went 
+# to the true branch if the "else" of the inner "if-else" had code.
+# The buggy code used the ill-fated "if ($::in_stream = stream_ok())" test. This meant
+# that when the stream was not ok, $::in_stream had been popped off, but no new 
+# output stream was pushed onto the stack, and thus the stack became one stream
+# too short everytime there was a not-ok stream. 
+
+
+ main:
+{
+    read_tab_data("../demo.dat",$sequence, $make, $model, $displacement, $units);
+    dump_stream("initial");
+    
+    if ($make =~ m/ford/i  || $make =~ m/volks/i)
+    {
+	if ($model =~ m/mustang/i)
+	{
+	    $model = "(collectible) $model";
+	}
+ 	else
+ 	{
+	    # First inner else
+	    if ($model =~ m/golf/i)
+	    {
+		$made_in = "Golf is Mexican.";
+	    }
+	    else
+	    {
+		if ($model =~ m/beetle/i)
+		{
+		    $made_in = "Beetle is Mexican.";
+		}
+		else
+		{
+		    $made_in = "Other VWs German.";
+		}
+	    }
+
+	    if ($model =~ m/beetle/i)
+	    {
+		$made_in = "Old and $made_in";
+	    }
+ 	}
+
+	if ($make =~ m/ford/i)
+	{
+	    $made_in = "Made in Detroit.";
+	}
+
+    }
+    else
+    {
+	# This is the outer else
+	$model = "(not Ford/not VW) $model";
+    }
+
+    dump_stream("after nested");
+}

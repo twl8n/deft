@@ -1,0 +1,16 @@
+main:
+{
+    do_sql_simple("faqdemo","","select * from faq where valid=1");
+    #default, fields to search, found records field
+    if ($keywords !~ m/,/)
+    {
+	$keywords =~ s/\s+/,/g;
+    }
+    naive_make_col("key_term", "", "split(',',\$keywords)");
+    $key_term =~ s/^\s+//;
+    $key_term =~ s/\s+$//;
+    dcc("dcc_key_term", "key_term", [""],["key_term,dt"]);
+    render("","Content-type: text/html\n\n","./sort.html", "");
+}
+
+

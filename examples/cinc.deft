@@ -1,0 +1,30 @@
+
+# memnonic: "cars if nested (c)"
+# Test nested if-else statements.
+# Just another test to make sure that if-else and especially nested
+# if-else function properly. Especially we want to test the case
+# where one of the split streams will have no records.
+
+ main:
+{
+    read_tab_data("../demo.dat",$sequence, $make, $model, $displacement, $units);
+    dump_stream("initial");
+    
+    if ($make =~ m/ford/i)
+    {
+	if ($model =~ m/mustang/i)
+	{
+	    $model = "(collectible) $model";
+	}
+	else
+	{
+	    $model = "(never see this)";
+	}
+    }
+    else
+    {
+	$model = "(not Ford/not VW) $model";
+    }
+
+    dump_stream("after nested");
+}

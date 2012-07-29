@@ -1,0 +1,2372 @@
+Comments at the top, version specific release notes below.
+(Search --- to find next section, or search version section title)
+
+
+Section titles
+--------------
+Version 6.2
+Version 4.0.1 (pending)
+Version 4.0.0 
+Version 3.9.1 (stable, needs more docs)
+Version 3.9.0
+Version 3.8.0
+Version 3.7.1
+Version 3.7.0
+Version 3.6.4
+Version 3.6.3
+Version 3.6.1
+Version 3.5
+Version 3.4
+Version 3.3
+Version 3.2
+Version 3.1
+Version 3
+
+
+
+Version 6.2
+-----------
+
+Apr 26 2008
+
+x render has trouble with relative paths. 
+
+x thaw on the .rnt is broken. Extra my created local $nest_ref
+
+x Make it so that templates don't use SQL db and/or don't require it.
+For saving templates we can use:
+use FindBin;
+use lib "$FindBin::Bin";
+use session_lib;
+
+x add app_config and deft_connect to common_lib.pl
+
+x remove some unused subs from common_lib.pl
+
+x cars_if.pl 
+Unmatched right curly bracket at ./cars_if.pl line 575, at end of line
+syntax error at ./cars_if.pl line 575, near "}"
+
+Q: Do we need agg_simple? Should it be converted to the new streams?
+A: Noah says we don't need it, and he's probably correct.
+
+x Fix all scalar code blocks to be anonymous blocks. Otherwise we will
+  see an error with my %urh; being redefined. Create a test for this,
+  in cars.deft. Add use strict to test for the error.
+
+Q: What kind of code differences are there between the (misguided)
+stream_ok() situation, and the normal block code?
+A: Remove the if and stream_ok(). Since stream_ok() now returns
+$::in_stream, you must also put back $::in_stream = pop_stack. Leave
+the left curly in the stream wrapping code. That block is necessary
+for variables local to scalar code such as %urh. Perhaps some future
+person can determine that we could undef and reuse %urh. There are
+notes in gen_stream_code() about the right curly and the two places
+where these occur. In fact, it looks like $sc and $sc_if are
+identical.
+
+Q: Do we need to process even non-ok streams? What if we need to 
+run TOP code in a null stream after a split?
+A: Look at code; Ask Noah. Scalar code doesn't matter,
+but TOP code in one of the split streams might create new records.
+If so, get rid of stream_ok(), and retest everything.
+
+x cinb.deft tries to create empty stack with pop_to_union().
+If the false stream is not ok, it also is not on the stack, leaving
+the wrong stream at the top of the stack.
+Test with nested simple if where it is always true; should try to union
+the true with previous false.
+Fixing by hacking stream_ok() seems to have fixed the problem.
+Consider moving $::in_stream() inside if (stream_ok...
+
+x Fix if (stream_ok test and stream_ok so that externally
+pushing $::in_stream back onto the stack is not necessary.
+
+Q: Why are "if" statements that are first statement in the split
+given special treatment? Shouldn't this simply apply to 
+any first statement in a split stream (true or false block)?
+A: Fix
+
+x gen_streams() wrap_if_stop and wrap_if_welse_stop are identical.
+Combine them.
+
+x Add an if(0) around the show/hide deleted code in dump_code().
+
+x Fix if-stop and if-welse-stop. It only gets pop_to_union(),
+but must not union_streams. (I think confusion over the old name if_else_stop
+caused it to get a eo_union wrapper). Very bad.
+
+x Create new function new_union() wrapped into the code at union_start
+to mark a new union block.
+
+Q: should pop_to_union() be allowed to null out the stream stack?
+See union_streams() in st_lib.pl where $dest can be undef.
+This is special. Perhaps pop_to_union() should not be allowed
+to null out the stream stack.
+A: Not. We should never have a null stack, and pop_to_union() must
+not be allowed to create an empty stack. 
+
+Q: x cin_5.pl (modifield) has ford as model "not ford". It appears that the 
+final else block always runs. This is very bad.
+A: Had an extra union and a bad implementation of the union stack. 
+
+x cin_2.pl, cin_5.pl has compile error, unmatched right curly 
+Fixed incorrect treatment of "if" statements that are also the first statement in a 
+true or false block. 
+
+x test fixing pop_to_union() to not pop the last element from the stream stack.
+
+x change join_streams to union_streams
+x change pop_to_join to pop_to_union
+
+x fix code generation to use new join blocks.
+
+x create add_joins(). It inserts join-stop lines/tokens.
+(and could insert join-start if we needed them).
+Add sub add_joins to common_lib.pl
+
+x I think we don't generate any code for join_start. If not,
+remove them from add_joins() in common_lib.pl
+
+x Stream union examples.
+The tricky situation is when if statements are found in the else of
+and if-else in the true block of an outer if-else. See cin_5.deft.  
+
+  main:
+{
+    if();
+    new_union();
+    if (stream_ok)
+    {
+	true();
+	pop_to_union();
+    }
+    union();
+
+    if();
+    new_union();
+    if (stream_ok)
+    {
+	true();
+	pop_to_union();
+    }
+    if (stream_ok)
+    {
+	false();
+	pop_to_union();
+    }
+    union();
+
+    if();
+    new_union();
+    if (stream_ok)
+    {
+	if();
+	new_union();
+	if (stream_ok)
+	{
+	    true();
+	    pop_to_union();
+	}
+	union();
+	# could have more code here.
+	
+	pop_to_union();
+    }
+    union();
+}
+
+- make if same stream wrapping as all TOP code, then
+add next_stream() for true, so that we don't need separate
+stream_ok tests for if vs normal TOP code.
+
+x cin_5.deft unmatched right curly
+
+x true clause is missing "if stream_ok"
+
+x move pop_to_join inside if stream_ok
+
+x lose } at end of if-eval. if (stream_ok... should end after end of false.
+
+x fix compiler to produce
+$::in_stream = pop_stream()
+if (stream_ok($::in_stream))
+   {
+     ...
+
+
+x Put back stream_ok, but improved.
+Must skip entire sections of code after if splits the stream.
+
+x mark_if() in common_lib.pl Don't clean depth zero.  We can't tell if
+there are future else statements, but a new depth zero if statement
+overwrites %if_hash that was unused when the previous if statement had
+no else. A stray else clause would probably cause havoc. Don't have
+stray else statements.
+
+x Extra pop_to_join after outer(?) if.
+
+Q: What happens if an else clause creates a column? What
+values does the column get for the other records after the else
+completes?
+A: Unknown.
+
+x Fix compiler to NOT run_once for scalar code. See $if_fmt and
+$gs_fmt in common_lib.pl.  The proof: an if or else clause that isn't
+hit would create a record. Scalar code can't create records. Scalar
+code can create columns, and can change existing records. See the
+comment about TOP vs scalar below.
+
+x nested if broken sometimes.
+See cin_1.pl and cars_if_nested.pl (cin_2.pl)
+Since we check if (stack_ok()), there may not be two output streams
+from if-else, and therefore join_streams() would be wrong, and 
+we'd have problems with swap() as well.
+Might be fixed by only moving if (stack_ok()).
+
+x Add a second stack: the join streams stack. Pop completed output
+streams off the main stack, and push onto join streams stack. After
+all the related streams are done, join all the streams on the join
+streams stack.
+
+x Create new raw_key() that builds a record key from all the cols,
+not just local scope, and keeps the cols in order, just in case.
+
+x Fix pe_rewind() and rewind() to use raw_key().
+
+x Need to fix all unwind() and rewind() calls to use %urh so that $urh->{view_key}
+and everything else in $urh is carried between unwind() calls in the same loop.
+
+x Clean out some old subs that are no longer used.
+
+x Don't push a diff into $urh->{$vk} unless $urh->{$vk} already exists.
+It must be init'd after the first instance of $vk is rewound.
+
+Q What creates $urh->{$view_key} before rewind for the first
+record and as a result the first record isn't rewound due to it (apparently)
+being a duplicate.
+A The bug is that we were diff'ing non-existant view keys (mem cache). Must init first.
+
+x fix rw/uw to use the @view_list as patch, but use full table
+for unique test (as is right now).
+
+x change view_list to [1,2,3] from (1,2,3) and assign as scalar
+which will make the scalar a ref.
+
+x (not completed) patch_eenv() has too many fields in $patch and it 
+totally overwrites the $eenv_ref, destroying the current record.
+It does this when it is only supposed to patch one field.
+
+x make rewind and unwind simpler and SQL-like.
+
+x Fix compiler to generate %urh, etc.
+
+Q Why would 231 identical records send render() into an infinite loop?
+A Not infinite, but it cross multiplies several times and the table get very large
+
+Q Why isn't garbage collection working after init_user_score()
+and update_score_order() in qcards.
+A Because of mistakes in unique record deletion and patching records so 
+heavily that the whole record is transmogrified into an copy of an existing record.
+
+x fix serious error in dcslib.pl parseterm() where .*? was excluded
+from the term. This prevented term* from working. It appears to have been
+broken for a looong time. Clearly not tested. WTF. Also see split_line() which
+munges the terms. Term parsing is a mess.
+
+x create gen_eenv_handle() in common_lib.pl, fix keycmp() in 
+runtlib.pl to use get_eenv_handle() instead of directly accessing
+a pointer to %eenv.
+
+x edit faq.deft to get it working. 
+
+x create list() as a short term solution to lists of columns which
+are a single arg.
+
+x fix/debug inc_depth and aliases throught the alias_ref's.
+
+N Use a stack-based heap lookup, not an array (which would end up sparse
+and then would require full heap management to avoid sparse-ness).
+
+N After pushing active aliases, push n for the number of local aliases.
+Use alias_stack of and a hash for 1,2 not an array.
+$depth is probably unused. Get rid of it?
+
+x data parallelism
+
+Q: What do you do if the mem_cache list is empty?
+A: Delete the current row.
+
+x Update Deft docs on defindit.com index.html and introduction.html
+Move all html to potter ~/public_html/defindit
+
+Q: Should the view_list include all the cols in the current view,
+or just the vars from the most recent operation?
+A: Just the most recent operation, which means that each statement
+needs a view_list.
+
+x Write a new sub slice_key() that makes the 
+key that most of the slice_eenv() calls are used to make. 
+It should be more efficient than the current code, and easier to read.
+
+Q: Why does $old_ref need to be in userspace code?
+A: rewind needs it
+
+Q: Why is $view_key passed back (via ref) to userspace code?
+A: Rewind also needs it, therefore passing it back saves
+creating it again.
+
+Q: How can unwind() know which mem_cache to use in if()
+since the if_expression hasn't been run? 
+A: It needs to use an additional data structure.
+Change %mem_cache into a hash of lists [0] and [1].
+[0] is the cached value and [1] is the output stream
+
+
+x create a stream_cache that is parallel to mem_cache
+and holds the output stream for each mem_cache'd record.
+This will also make it easy to implement agg_simple()
+
+x Fix gen_if and gen_scalar with new stream_cache
+
+x Fix pe_rewind, rewind, and unwind with new stream_cache
+
+ main:
+{
+    inc_depth("main"); # no @_ for main
+    next_stack(); # gen_main
+    $::in_stream = pop_stack();
+    $::out_stream = next_stack();
+    $run_once = 1;
+    {
+	my $view_key;
+	my %mem_cache;
+	my %stream_cache;
+	my $old_eenv; # Contains a reference to the old eenv
+	# view list
+	my @view = ("tvar", "newvar");
+	while (unwind(\$view_key, \%mem_cache, \%stream_cache, \$old_eenv, \@view) || $run_once)
+	{
+	    $run_once = 0;
+	    # get cols
+	    my $tvar = get_eenv("tvar");
+	    my $newvar = get_eenv("newvar");
+	    # code
+	    $newvar = "init";
+	    $newvar =~ m/(ini)/;
+	    $tvar = $1;
+	    # set cols
+	    set_eenv("tvar", $tvar);
+	    set_eenv("newvar", $newvar);
+	    rewind(\$view_key, \%mem_cache, \%stream_cache, $old_eenv);
+	}
+    }
+}
+
+
+x 1.1 add aliasing to _eenv
+x 1.12 No longer need $_[x] for param vars. Can use param name.
+because we have the alias feature built into _eenv.
+x 1.13 Revert gen_scalars() back to simpler code.
+x 1.14 Revert gen_if() back to simpler code.
+
+x 1.145 Fix gen_if() to properly call new unwind() and rewind()
+See the Q/A above about unwind and stream_cache. We now have two 
+parallel hashes.
+See item 3.0 above.
+
+Q: How will a template know what the actual column name is 
+when render() is called from a subroutine? 
+A: We probably have to go to a fixed column name with an 
+internal subroutine name instead of the crocked up aggregate
+column names currently in use.
+
+Q: How will do_sql_simple() know what db column corresponds to
+the current scoped column?
+A: We either need explicit db-to-col conversions or we need cols
+to have fixed names with internal scope.
+
+x1.0 mark_sub_calls() Fix cols in the arg list to be aliased throughout a sub.
+The bug is in calling of top calls, i.e. do_stuff().
+
+x1.1 create a function that translates $bar into $_[0] or 
+into $do_stuff_bar depending on how used, etc.
+
+x1.2 fix all calls to gen_varlist
+
+sub foo ($bar)
+{
+    do_stuff($bar)
+    $bar =~ s/stuff/thing/g;
+}
+
+sub foo
+{
+    do_stuff($_[0]);
+    $foo_bar = get_eenv($_[0]);
+    $foo_bar =~ s/stuff/thing/g;
+    set_eenv($_[0], $foo_bar);
+}
+
+x Change exists mem_cache to exists bool_cache in the compiled
+output for if statements.
+
+x sub gen_scalar() Rewrite the patch/diff compiled code to skip executing 
+code where the record can be patched. There is a logical disconnect.
+We patch after executing the code, but patching is a way to avoid
+running the code when the input is identical to a previous record.
+
+x1.0 sub gen_if() Rewite if_param_fmt to patch the t/f nature of the
+if() as well as the side effects from doing an assignment in 
+the if clause. Deft supports side effects in if clauses, therefore
+we want to patch each of the output streams. What a mess.
+Remember that patch_eenv() includes a rewind.
+
+x move rewind() inside the else clause with non-patched subroutine unwind loops.
+
+x cars.deft, testlib.deft fix_newvar() only fixes one record. 
+It appears that patch isn't working.
+Reverse $aa and $bb so the patching goes in the right direction.
+
+x common_lib.pl %patch and %diff are empty.
+Fix hash_slice_eenv() to return a hash (it was returning a 
+list of empty items).
+
+x Remove extra %s in if_param_fmt for sub gen_if()
+
+x view_list becomes a list of *all* cols visible to a sub.
+i.e. arg cols and local cols.
+
+x1 Use hash_slice_eenv() instead of get_ref_eenv(). 
+See cars.pl
+x diff_eenv() should probably only diff against local and param vars.
+patch_eenv() should only patch local and param vars. 
+
+Q: Should diff_eenv() default to using the current eenv?
+A: No. This would only apply if all the cols were local. 
+The only time we'll diff two eenv's is when we have local cols.
+
+x Fixing %mem_cache to be local, and not re-instantiated every pass
+through the while(unwind()) loop has broken the code. cars.def now only
+knows about the VW Golf, which happens to be the first record in demo.dat
+
+x Move diff_eenv() and patch_eenv() to common_lib.pl.
+
+x1.0 Upgrade inc_depth() dec_depth() and garbage_collection() to 
+know about the curr_sub, and to garbage collect out of scope based
+on the curr_sub. 
+
+x1.1 Remove all the depth_vars stuff from set_eenv().
+
+x1.2 Comment out get_depth().
+
+x1.3 Comment out %old_vars, $depth_vars
+
+x We need to guarantee that local cols in a given scope (depth)
+have unique names. Maybe all names are depth_name.
+
+Q: Can this happen without the compiler knowing?
+A: The compiler should handle everything. See Q/A below.
+x Vars cannot begin with _ or 0-9. See sub mark_enclosing()
+We could allow _, but we do not want to allow 0-9 due to $1, $2, etc.
+
+x Add a new pass to the compiler and another dimension to $code_ref
+which is the name of the current subroutine.
+
+x Don't do anything to $vars inside perl subs.
+
+x1.0 col names become sub_col to prevent local sub cols from conflicting with 
+parent cols. Cols passed as param are compiled as direct reference to the 
+original col
+
+deft_uc($col_1);
+deft_uc("main_col_1");	
+
+my $deft_uc_col_1 = get_eenv($_[0]);
+set_eenv($_[0], $deft_uc_col_1);
+
+x1.0.1 Create an column aliasing mechanism to deal with params?
+
+Q: Can we create an col name and aliasing mechanism and tighly intgrate
+it with with the _eenv code?
+A: For the internal _eenv code to know about aliases it would also have to 
+know the name of the original scope for each column, and would have to 
+know the whole scope tree, including the name of the current sub, and all
+subs above it. Better to let the compiler determine the actual column
+names with some help from Perl parameters and Perl's @_.
+
+x Move %mem_cache outside while(unwind()) and add an outer block
+making %mem_cache local to that block.
+
+x1.0 Fix the compiler to use new code from st_lib.pl:unwind_full() as
+substitutes for get_eenv() calls and set_eenv() calls. This will
+give us short-circuited sub-table behavior.
+
+x1.1 Compile Deft sub argument lists into a list of strings.
+Why didn't we think of this earlier?
+Remove ($proto) from sub foo ($proto) after parsing out the $proto
+col names.
+
+x1.2 in dsub arg lists convert $str to "str".
+Literal "str" is unchanged. Also fixed for top Deft calls
+which could create trouble. Test carefully!
+What about Noah's consts?
+
+x1.3 Mostly complete. Awaiting prototype parsing.
+Change gen_varlist() to return populate code for gv and gather code for sv.
+Pass curr_sub name to gen_varlist where it can 
+retrieve arglist proto hash from global %args if necessary.
+
+x1.4 Fix whatever code calls gen_varlist().
+gen_if(), gen_scalar()
+
+x1.4.1 Need to gather all the return values from gen_varlist()
+and insert into compiled code.
+
+x1.4.2 In gen_scalar() and gen_if() keep track of what subroutine a given line 
+of code is inside. Now we need to know that so we can track the 
+arg list of the current sub. Probably need to know main: too.
+
+x1.5 gen_varlist is called on if statements.
+These need special care to get local and arg listed vars.
+(or not)
+
+# Deft source
+reform($col_1, $col_2);
+
+reform($arg_1, $arg_2)
+{
+    $arg_1 += $arg_2;
+    # code here
+}
+
+# Compiled Perl
+reform("col_1", "col_2");
+
+# Q: Why get the eenv ref into $comp_ref?
+# A: Because we need to diff the original record against the changes after set_eenv().
+
+sub reform
+{
+    # args = @_ 
+    # The compiler knows which local $arg_n corresponds
+    # to each element of @_
+
+    inc_depth();
+    $::in_stream = pop_stack();
+    $::out_stream = next_stack();
+    $run_once = 1;
+    while (unwind() || $run_once)
+    {
+	# Removed $code_ref and one dimension of %mem_cache since
+	# %mem_cache is a local var.
+
+	# Don't include local_var since it can't be required in a patch_eenv.
+	# Create @view for each unwind, since a given line
+	# may not use any or all of the args.
+
+	my @view = ("arg_1", "arg_2"); 
+	my %mem_cache;
+	$run_once = 0;
+	# get_eenv() for arg cols.
+	my $arg_1 = get_eenv($_[0]);
+	my $arg_2 = get_eenv($_[1]);
+
+	# get_eenv() for local cols.
+	my $local_var = get_eenv("local_var");
+
+	# code here
+	
+	set_eenv("local_var", $local_var);
+
+	# If no @view, the compiler should not output this section.
+	my $view_key = join(' ,', @{slice_eenv(\@view)});
+	if (exists($mem_cache{$view_key}))
+	{
+	    patch_eenv(@{ $mem_cache{$view_key} });
+	}
+	else
+	{
+	    my $comp_ref = getref_eenv(); 
+
+	    set_eenv($_[0],$arg_1);
+	    set_eenv($_[1],$arg_2);
+
+	    push(@{ $mem_cache{$view_key} }, diff_eenv($comp_ref));
+	}
+	rewind();
+    }
+}
+
+x2 Deft subroutines need to get their list of columns, and need to 
+alias columns. Make all this happen at compile-time and produce compiled
+code with the desired column aliasing.
+
+x rename common_lib.pl:insert to sql_insert and change initdeft().
+
+N deft: Each subroutine needs its own table
+
+x deft: Fixed in common_lib.pl
+agg_simple isn't managing the streams correctly.
+Debug with index.pl, then fix the compiler.
+
+x runtlib.pl emit() 
+if ($ks_val && exists($::exists{$ks_val}))
+assumes that $ks_val will never be zero. 
+Fixed with ! defined() test.
+
+x Menu item numbering is off.
+dcc() does not correctly sort zero values, even after this fix:
+fix runtlib.pl by properly initing two globals:
+    undef(%sort_vals);
+    undef(%sort_ties);
+
+x content_manager: index.deft:call_state()
+Must define a col in the parent sub so that the col
+will still have the child's value after the child returns.
+
+x debug garbage collection. Compile errors were fouling up 
+the depth vars.
+
+
+x Add garbage_collection call after each sub call.
+
+
+x Test non-rewind of duplicate records in garbage_collection().
+
+
+x Fix gen_start to do dec_depth at wrap_stop_stop.
+Rename gen_start to get_start_stop.
+
+
+x implement extra variable garbage collection as follows:
+main:
+{
+    # $depth initialized with 1.
+    while(unwind())
+    {
+	my $var = get_eenv("var");
+	$var = "lkjaflkjf";
+	set_eenv("var", $var); # marks var with depth is var has no depth. 1 is min depth.
+	rewind();
+    }
+    mysub(); # look inside mysub for inc_depth, dec_depth
+    garbage_collection(); # for mysub
+    table_func("string"); # must to do own garbage collection.
+}
+
+sub mysub
+{
+    inc_depth();
+    # the usual pop_context...
+    while(unwind())
+    {
+	my $local_var = get_eenv("local_var");
+	$local_var = "lkjaflkjf";
+	set_eenv("local_var", $local_var); # marks var with depth is var has no depth. 1 is min depth.
+	rewind();
+    }
+    dec_depth();
+}
+
+
+x Can other connections to the db see temp tables? Probably not 
+without some weirdness. No.
+
+
+x content_manager requires that image_order starts 
+with one not zero. Failure causes first image to incorrectly
+be linked to a non-first web page. May have also caused the menu
+not to render, and something made "Previous" loop many times.
+
+
+x new Deft API read_ws_data() reads cols white space delimited.
+Ignore blank lines.
+Ignore comments.
+Use it to read in states.dat
+
+
+x ordinal never goes to 1 in gen_image_pages. 
+Bug from converting over to a single SQL query for prev. Might
+better query ordinal, and calc prev and next.
+Use prev as the basis, and default it to zero.
+
+
+x dump_stream() should remove \n from data or at least
+keep it from confusing the output.
+
+
+x Fix this when click Edit Content.
+Error: do_sql_simple() overwrites col(s)  owner page_pk
+    select * from content,page where page_pk=807 and page_fk=page_pk and owner='twl'
+
+
+x Why is there a column page_name in sub edit_page in index.deft?
+That column should not exist until after the do_sql_simple call.
+page_name is a var from CGI in the web page page_search.html
+deft_cgi() created the var.
+change name of form field "page_name" to "_d_state".
+
+
+x Create dispatch.
+
+
+x content_manager index.deft is all messed up.
+Remove debug print, re-run. Probably needs a con_pk or page_pk.
+
+
+x templates not being read because multi_render() wasn't in %deft_func
+
+
+x init_template() was doing -e which is true if a path
+exists but isn't a file. Changed to -f
+
+ 
+- Does it make sense to move r_spew_root() out of r_emit()?
+We could get rid of $first_flag.
+
+
+x Replace render() with muti_render(). Rename back to render().
+Eventually port all existing code over.
+Or keep render() as a stub?
+
+
+x eval() in content_manager fails to detect that a variable is set.
+This fails if $_d_test = '$edit' but $edit is not
+being used in this block, and thus we do not have
+my $edit = get_eenv("edit");
+
+
+x Test fails because to fix $_d_test the leading $ was stripped
+and later $_d_test was eq against "\$test". Changed to "test"
+but this is a recurring problem. 
+
+
+x Create multi_render() in runt.pl.
+Then probably don't need agg_simple.
+
+
+x Is there a two control-spec method with one dcc?
+Do we allow sibling control specs? (that sounds wrong). 
+Of course, this is trivial it just means you have two disjoint 
+loops in the same document with the same ordering. if say you had 
+an event program that listed performers with their piece and
+then in the end listed the performers with their CV.
+
+- Need a way (a special {}) to set a $value somewhere besides
+where the $value is. i.e. {set $value &lt; -2}
+
+
+x Figure out what Noah did to render() in order to re-invent output
+to stdout. Nothing I didn't want to break your code but printing to STDOUT or 
+anywhere should be allowed by putting a string in the code without having to
+put that value in a variable.
+
+
+x will read_tab_data() and split do the work of naive_make_col? No.
+
+
+x Noah: is common_lib.pl line 689 really an error? It seems like
+normal behavior for every end. See:
+# Noah: is this an error?
+
+
+x Noah: Add a pass after the tokenizer (in sub tokenize)
+to collapse multiple tokens into complete statements.
+
+
+x Fix "perl name" subroutines.
+
+
+x content_manager/index.deft says "if_simple not supported" but there aren't any.
+(There were in required file cmlib.pl)
+
+
+x Noah: tokenizer give incorrect result for this:
+    do_sql_simple("faq",
+		  "",
+		  "select * from faq where valid=1");
+
+
+x add swap_stack() to the false case inside stream_ok().
+
+
+x Fix join_streams() to get orig and dest, remove $orig and $dest
+from compiled code.
+
+
+x Noah: Fixed non-greedy if expression capture to be greedy. 
+Was that correct? Non-greedy is left over from old (buggy) tokenizer?
+
+
+x Why does life.deft hang after the run? (if was mistakenly running clauses
+with empty streams).
+
+
+x Isn't %_d_code_refs no longer necessary with compiled-to-Perl code?
+
+
+x st_lib.pl: create low level functions to manage the stream stack.
+This should prevent name space collision, and obviates the need
+to declare yet another global in the compiled output.
+
+
+x remove @prev from common_lib.pl, replace with
+next_stack, pop_stack, swap_stack, read_stack
+
+
+x don't wrap sub calls, but do put a ; after them.
+
+
+x last line of main seems to be missing ;
+
+
+x Need \n after opening { of subroutines.
+
+
+x Don't "my" $orig and $dest in eof
+
+
+x \n before "# end of false"
+
+
+x don't "my" $temp in $end_of_true.
+
+
+x move end-of-false outside the true block
+
+
+x st_lib.pl: create stream_size(), join_streams()
+
+
+x change eof code to use join_streams()
+
+
+x remove "my" from $if_fmt. Not necessary? What about nested if statements?
+
+
+x fix $# to be $#prev and $#-1 to be $#prev-1
+
+
+x don't emit wrap_else (also not emitting wrap_delete)
+
+
+x if_stop without else needs to have eof code just like else_stop.
+
+
+x Need to mark else-stop. Right now these are marked if-stop.
+
+
+x only support if and if-else (no elsif).
+
+
+x implement end-of-true and end-of-false stream management for if statements
+if pops for in, pushes false and true.
+Run true with statments as usual.
+Run eot
+Run false
+Run eof
+
+
+x compiler emits eot code.
+eot swaps the top two elements of the stack.
+
+
+x compiler emits eof code.
+Pops the stack and moves (changes?) all elements to the 
+stream determined by the top of the stack (the stream which is  stack[$#]).
+
+
+x If without else has trailing eot and eof with no statements.
+Essentially if without else is changed to if-else with an empty else block.
+
+
+x Every statement (even last) pops for in, and pushes out.
+
+
+x Clean up from wild edit. 
+
+
+x (complete re-think) Fix logic of final stream for if-else chains
+
+
+x non-last needs to understand that if-stop is a block terminator.
+
+
+x switch false, final (and true?) to stack references?
+
+
+x With new stream stack don't need context stack. Remove context stack.
+
+
+x main start needs to push(next_stream()) twice.
+
+
+x remove the concept of "conditional push".
+
+
+x Missing ; on last line of subs including main().
+
+
+x top calls need ;
+x if clause has };
+x Non-subroutine blocks aren't handled properly. Fix blocks
+before inserting stream code.
+x sub stop sometimes marked if_stop
+x else isn't marked delete
+x if_stop doesn't take else clauses into account
+x mark if and else stops
+x Add blocks for if and else for local var. scoping.
+x Remove ifs_flag.
+x Have to convert if to if_simple
+x Time to implement else
+See cars_if_tmp.pl
+x Make a pass to clarify if statments with else clauses.
+x Fix if to wrap as if_simple, remove if_simple
+x Go back to fixing scalar wrapping.
+x wrap scalar code with gen_scalar()
+x Add dump_code() diagnostic
+x Improve initial wrapping type in compile_deft().
+x Get compile_deft() working based on array instead of strings
+x Convert %code over to 2D array instead of hash of lists.
+
+
+x New tokenizer. Fixed comment removal
+x Move old get_block to code_archive.pl
+x common_lib.pl L1124 is buggy.
+x no dec_depth or garbage_collection at the end of main
+x no garbage_collection after scalar Deft calls?
+
+
+x remove clear_eenv() from unwind() (test this).
+
+
+x Move composition notes to data_composition.txt
+
+
+x Fix do_sql_simple() to warn about overwriting
+
+
+x Noah: write down the 'proof' that recursion in Deft has very little
+overhead (only the context stack).
+
+
+x Noah: why must I use im_pk > 0 in dcc() to prevent the empty
+record from rendering? Perhaps render() should not do run_once (if it is
+even doing that).
+
+
+x change $::path to $::_d_path.
+my $path apparently overwrites $::path in some circumstance. e.g. images_all.deft
+
+
+x convert remaining CGI::unescape() calls in common_lib.pl to
+unescape();
+
+
+x Fix wrap_start, wrap_main then don't need first line special case
+
+
+x q1 Change to $wrap_main?
+
+
+x q2 change main's wrap so all the normal code gen works?
+Probably $prev_out = 0; instead of in_stream, and skip the 
+next two lines, ala ifs and ags wrapping.
+
+
+x q3 If main is wrapped different, then remove extra $prev_type != $wrap_main
+
+
+x q4 Then can $prev_type be removed?
+
+
+x q5 Remove extra if.
+
+
+x q6 All these if/elsif's seem extra complex. More smaller independent if's?
+
+
+x q7 Remove both extra elsif (0) statements.
+
+
+x C because the order of the wrapped parts would be wrong.
+q8 All the other wraps are separate. Why is wrap_dsub inside the if() here?
+
+
+x q9 Remove commented out old lines from gen_perl().
+
+
+x q10 Is this old code{perl} section necessary? Need a test for perl code.
+x perl subs don't compile.
+
+
+x Fix missing /s on sub_name regex in handle_deft().
+
+
+x We need wrap_ags_start and wrap_ifs_start.
+agg_simple and if_simple are both broken for multi-line code blocks.
+They need different first line strings, but the same general behavior.
+Need nth and last line behavior. Make sure this is working
+for main: and subs. 
+
+
+x Add "Do not edit this file" comment to compiled perl.
+
+
+x Look at all uses of unwind() and see if they need an "|| $run_once"
+
+
+x Overhaul code to that all _eenv calls make no assumptions about
+the type of storage of eenv (e.g. that it is a hash). This allows
+us to use a more efficient and interesting storage, especially
+in the _st version.
+
+
+x Invoke (named?) native Perl subroutines inside API calls, and maybe elsewhere.
+
+
+x Names for dcc-controlled-blockish-where-if: wff(){ }, wff_sub()
+xcc, ecc, excc, wff (deeply ironic, well-formed-function, where-if, whif, wf),
+ccx, dcc_if, block, wereblock (whereblock), weredcc, werecc, wdcc, wcc,
+(we named desc)
+
+
+x (No) Should any Perl be required to "declare" columns? It would declare them
+by only rewinding exisiting cols or cols instantiated with a new() call.
+(or a special keep() or something.)
+
+
+x Create where_simple("exec", "subname") that executes subname
+once for each record that returns true for eval("exec") and concats the records into
+the stream. Basically done.
+
+
+x Need where and limit, where exists called keep_row limit posible with desc + keep_row
+
+
+x Fix $xx concept in runt_compile.pl sub pull_cspecs(). This isn't specific and 
+it will break templates with more than 10 loops.
+
+
+x Create a where(). Requires a branching rewind(). Wrong
+
+x Check for and do not allow Deft API calls in if() and while().
+This will break. Test and document how it breaks?
+
+
+C In case we haven't mentioned it regexes must be m/ s/ tr/.
+Bare // are not allowed. Ha!
+
+C Noah says that if you are thinking about more than one row 
+at a time that you are making a mistake. He hasn't explained 
+how that statement fits with visualizing data in 1N form.
+
+C @prev was local to main. That was bad.
+
+C Multiple tables don't gain if the requirement is for nested loops
+the data wouldn't necessarily be cross multiplied, however, the
+loops will still run the same number of times as a single loop would
+run on the cross multiplied data set. 
+
+For unioned data, a column with zeros for the "other" table won't
+render (naturally). However there are issues of column overlapping,
+and order of dcc() calls if the two "tables" are 100% disjoint.
+Nearly all code uses related data structures.
+
+C We could have a macro-like facility if we had a special syntax that 
+just put a interpolated string into the generated code. This would be 
+fun and dangerous, and basically a tool for the language designers
+so they could create library functions without changing the compiler.
+This is probably what Noah wants.
+
+C Is it possible to add a counter column inside do_sql_simple() when
+the SQL returns ordered data. That column can be trivially mapped to lexically
+sortable keys. $new_col = "g" x $old_col;
+Noah says the real solution is to rewrite desc().
+
+main
+{
+    dcc($var1 == 0)
+    {
+	create($newcol);
+	gb($var2);
+	ob($var3, asc_num());
+	ob($var4, desc_char());
+    }
+
+
+    dcc($new_col)
+    {
+	if($var1 == 0);
+	gb($var2);
+	ob($var3, asc_num());
+	ob($var4, desc_char());
+    }
+
+    dcc( exp=>$var1 == 0
+	 gb=>$var2,$varx
+	 ob=>$var3, asc_num()
+	 ob=>$var4, desc_char()
+	 );
+
+
+    dcc(($var1 == 0),
+	($var2),
+	($var3, asc_num()),
+	($var4, desc_char()));
+
+
+    if_simple($var == 0)
+    {
+	$new_col = dcc(group_by($var2),  $var1,asc,$var3,desc );
+    }
+}
+
+dcc $new_col where $var == 0 order by $var1,asc,$var3,desc group by $var2
+
+C Actions are always run (duh!) and are always true. We used to think
+that actions might not be true. 
+
+C Noah says that by using desc() with a "run once" function and a no op
+function, we would efficiently run something once.
+
+C explicitly declare columns? Explicitly associate do_sql_simple() return
+values with columns that don't exist, or explcitily ask to have
+existing columns overwritten. 
+
+C dcc, desc, etc. warn if overwriting existing column?
+
+C How do we destroy a column? Is it possible to have universal
+methods for overwrite (self join?), other join, and union?
+
+C What if each local node machine has its own Postgres and creates
+a table for each running script. Could machine1 insert records into the db
+on machine2, then m2 runs until it gets a flag in a semaphore table, and m2
+inserts records into m3. This relieves db load on the "main" db server.
+
+C dcc() will render a record with a null value for the control column.
+If you don't want this you'll need a where clause.
+
+C Regexes in dcc are not practical
+{$dcc /yadda whatever(loop thats important) other matchy crap/}
+{$dcc /(<tr(?s:.*?)\G(?s:.*?)<\/tr>/}
+{$dcc /((?:<tr(?s:.*?)){2}\G(?:(?s:.*?)<\/tr>){3}/}
+
+C C indent beautifier works on our compiler output.
+indent -bl -nce -npsl cars_if.pl
+
+C Noah defines:Deft code 
+All the code that operates on the implicit table without the end programmer
+writing writing rewind/unwind.
+
+C Scalar manipulating code (smc? s code? atomic? ao?):
+Perl code which require wrapping by the compiler with rewind/unwind.
+
+C Table manipulating (top) code (Deft API calls)
+Deft API calls which include rewind/unwind and which are compiled
+by being prefixed with Stream handling code.
+
+C State machine solution 1: Deft API that compiles state table into Perl code
+
+C State machine solution 2: Halting function.
+
+C State machine solution 3: A Deft API state machine.
+
+C State machine solution 4: Make 2nd arg of if_simple() arbitrary Deft.
+
+C Noah: if render where compiled, we could easily compile $where_eval at the same time.
+
+
+
+Version 4.0.1 (pending)
+-----------------------
+
+x if_simple comes back with full in and out (which it shouldn't) and 
+is wrap_none, which means it can't get correct in and out. Needs to 
+come back partially wrapped, and get wrap_scalar treatment in gen_perl.
+1) remove full in/out for ifs
+2) change type of compiled ifs to wrap_top.
+
+x $out is assigned one step early in do_iter() of life.deft
+
+x if_simple expression not unescaped
+unescaped in two places. Seems like asking for trouble, but works
+with cars_if.deft.
+
+x We incorrectly assume that $source in gen_if_simple() is
+a subroutine.
+
+
+
+
+Version 4.0.0 
+-----------------------
+
+x Fix lack of timestamp checking for templates at line 351 of runt.pl.
+
+x compile_deft() uses specific get_eenv() calls instead of one restorevars().
+Are several get_eenv calls faster? get_eenv allows use strict.
+
+x clean_merged() remove any empty entries in %code that aren't wrap_stop.
+wrap_none ifs that are complete are being confused with empty
+lines that are wrap_none.
+
+x if_simple needs run_once
+
+x subs not setting $::out_stream
+
+x gen_perl needs to track type of current sub to get
+first and last $::out_stream correct.
+
+x error text outside block on parsing if_s in handle_deft().
+
+x Need to have a separate pass to populate is_deft() since
+subroutine names aren't known until all the subroutines have been 
+parsed?
+
+x call_deft seems not to be recognized as deft code.
+
+x if_simple compiled perl is not correctly recognized
+as "deft" code.
+
+x Fix current requirement that there is at least one record in the stream.
+Create a convention (standard?) for initializing a stream. make_row()?
+
+x is ks_val in get_bpath already called from emit?
+
+x Fix compiler bugs: First line gets \n truncated after ; 
+and can't use \n between args in arg lists.
+
+x Rewrite compiler to handle all kinds of quoting (strings, qw, qr, regex's)
+
+x common_lib.pl clean_db_handles() should clean the system handle as well.
+
+x Fix compiler to use get_env() instead of restorevars?
+
+x examine/fix calls to get_ref_eenv
+
+x made changes to runtlib bpath responds intellegently to ties.
+  added new global %sort_ties contains data to make the implementation 
+  efficient.
+
+x make template names use full path to be more or less unique.
+
+x get rid of test for update behavior in db template compile.
+Make db specific compile subs.
+
+x new sql_update_template, sql_insert_template
+x Use system_dbh() internally instead of $dbh as arg.
+x dbh->commit internally
+
+x Add hostname to db template name to make it more unique
+
+x remove $compile_template_name as arg
+compile(), load(), 
+
+x correctly handle getting compiled_ts from db.
+
+x common_lib.pl restorevars() Fix wrong regex detecting $1 etc.
+
+x Fix templates always recompiling. Aren't they cached somewhere?
+Can we get them from the db or something? What ever happened to the .rnt files?
+
+x Compile .deft to .pl (not .deft to .deft.pl)
+
+x Fixed runt_compile.pl offset_substring() line 82
+x Fixed the fix. Use new_offset-- instead.
+
+
+x When zeroth=last, out::stream needs to be $out
+in common_lib.pl print_code_core() in subroutines.
+
+x Don't use $::out_stream as $::in_stream since the global $::out_stream
+may have changed. Create a new local var.
+
+x add agg_simple to print_code_core, create sub gen_agg_simple
+
+x convert deft_cgi to real Deft API subroutine. Make it run_once.
+
+x change do_sql_simple to run_once.
+
+x for now assume that Perl bits in compiled code are $run_once.
+
+x common_lib.pl compile_deft() makes Perl output.
+
+x Read in deft source with read_deft()
+to see if there is a require in the source. It is very simple:
+require must be at the beginning of the line, the file name is 
+in double quotes. The require can occur anywhere in the file 
+and is removed. Unlike Perl, the require'd file is not immediately parsed
+and so it does not require a trailing 1; (which Perl puts there so
+the file returns true when parsed).
+
+x change read_deft to return the most recent date of the loaded files.
+Fix all three calls to read_deft().
+
+x create crush() that throws out all rows except the first one.
+
+x deft.sql change db_canonical_name to db_alias which is more accurate.
+
+x fix deft_connect() in common_lib.pl to use db_alias.
+
+x Need a QA test for one line deft script.
+one.deft
+
+x If only one deft script, out stream and in stream are both zero
+and it infinite loops.
+
+x runt.pl, init_template()
+ Don't bother thinking about re-compiling if the original file
+ doesn't exist.
+
+
+
+
+Version 3.9.1 (stable, needs more docs)
+---------------------------------------
+x Add new examples cars_if.deft.dist, cars_mean.deft.dist
+
+x Fix incorrect exit in read_tab_data().
+
+x st Fix: unwind() was clearing eenv on every iteration. Since unwind
+is called the last time where there is nothing to unwind, the final
+eenv was always empty. The final eenv needs to contain the last record
+succesfully unwound. Fix by moving clear_eenv() inside the success
+case in unwind().  The bug manifested as _return not being available
+at the end of run_core.pl in st_lib.pl, but run_edges() in machine.pl
+needs the return value. Probably a side effect of changes to stream
+handling.
+
+x Disable warnings about null col names or undef col values in dump_stream().
+x Remove call_simple() [mv to code archive] because it duplicates the work of call_deft().
+x Remove call_table() [mv to code archive] because it doesn't work and is conceptually wrong.
+x Remove deft_get() and deft_put() [mv to code archive] because they are conceptually flawed
+as well as unnecessary. 
+
+C aliased cols act like that col has changed name.
+Only the alias works. Orig name doesn't work. Attempts to create a col
+with the orig name are fatal.
+
+C Lock columns to prevent side effects. When do the locks expire?
+
+C sub calls could make a record with the old and new cols. The code
+would always read and write the same cols, and Deft would create
+the new stream for the sub's in, and merge the sub's out with the 
+existing stream. The sub doesn't need any knowledge of the outside
+world. See st_lib.pl call_table().
+
+x st deft_get() and deft_put() must be non-API as they 
+currently work since they return a Perl scalar in the block 
+of Perl code.
+
+x st Work on subroutine calling which is broken. See call_simple in st_lib.pl
+and call_simple.txt
+
+x Remove r_flag from dbq_sql_lib.pl Not necessary since the 
+writer's new ancestor is created in create_bottom() before the 
+reading process is spawned.
+
+x (Yes) Has the new process race condition been fixed by proper
+order of process creation? Is the extra r_flag necessary
+in dbq_sql_lib.pl?
+
+x dbq Remove table dbq_flags (unused).
+x Stop using dbq_flags. Remove this table.
+
+C Records with different columns is evil (but perhaps necessary). It
+becomes necessary to un-restorevars after rewind since the next record
+may have different columns and may not therefore be able to undef
+existing columns. Leaving the columns around gives the impression that
+this record has the same value for non-existant columns as the
+previous record.
+
+x Find a better way to track family ancestors, and clean up.
+
+x If process runs and upsteam_done immediately returns false, 
+then probably forgot to commit after sql_new_ancestor() and before 
+open_peer().
+
+x records are rewound and inactivated on second stream
+but never read. Both flags are apparently always false
+on the second stream. Could try upstream_done() on 
+second stream at various times.
+
+x rewind's cache needs to be able to handle many streams
+separately.
+
+x sql_inactivate_ancestor() needs to take in and out streams
+otherwise it will inactivate several family records.
+This is bad because there can be several writers to a stream,
+and those writers may not all finish as the same time.
+
+x if_simple data seems to flow ok, but not output at all.
+Need an ancestor who writes to the true subroutine in if_simple().
+No ancestor means that the sub exits immediately since it has no
+active writer. I'm not clear how this breaks all output, but it would
+break the output from the sub. The sub won't have any input, and no output
+(which is what we observe: the sub never rewinds any records).
+Need to inactivate this new ancestor later.
+
+x Need some db-centric way to track and clean up 
+all the family records. @st_list no longer works.
+
+x upstream_done() needs to check all writers.
+
+x in, out, last_out confusion in call_deft
+context may be incorrect or need more info
+
+x dbq versions call_deft() and it's ilk need hosts and the port
+available in each process. Might have to be additional return value
+of sql_get_ancestor().
+
+x dbq with cars_if.deft, when bottom rewinds to top,
+top never unwinds that record.
+
+x dbq rewrite spawn_processes, etc.
+
+x dbq add new spawn_bottom();
+
+N dbq Need agreement about building sub on top of code, or replacing code.
+call_deft() needs to be replaced. 
+
+- dbq leave db in dirty state and test. Bad things were happening.
+
+x dbq fix if_simple
+
+x dbq fix agg_simple
+
+x Port new spawn (replace current) calling convention from st to dbq.
+
+x dbq combine spawn_all and spawn_processes
+
+x st rewind undefs vars after rewinding.
+
+x restorevars() doesn't know how to undef a var that isn't in the
+current record.
+
+x patch clear_eenv with patch to set all fields to null instead of
+deleting the eenv, due to restorevars() bug.
+
+x ? Is spawn_top() really doing anything? Seems like spawn_one
+is all we need.
+
+x Port agg_simple to st.
+
+x Fix st version of if_simple.
+
+x Try out a new convention where spawn_process() always
+takes over the current process. This is good when starting
+and calling, but when splitting means that the splitting
+code will have to create a context before calling spawn_process()
+for the split.
+
++ pop_context() pops, and does equivalent of set_context().
+Or something sensible.
+
+x st version needs to push_context each line of code,
+and only pop_context. Need to get rid of inc_context.
+I'm amazed inc_context even works.
+
+x Fix in/out/last in spawn_processes() in st_lib.pl
+
+x Fix st version of call_deft, needs testing.
+
+x run_core_sp is now run_core. The st version is st-only.
+
+x Get rid of inc in context.
+
+x get rid of context{line} and put code in the context,
+not a key to use into %exec. Still need %exec, but it changes to something new 
+that we can used to push subs to run them.
+
+x create agg_simple(), new_proc(), mean()
+
+x Fix/change sql_read() to take dbh, in, out instead of dbh, sth, out.
+
+x Fix single host to default to current hostname in sql_next_host();
+
+x Fix sql_next_in with select/delete/commit/insert/commit code
+
+x Try to break the old sql_next_in. It breaks as expected.
+The new code survives the same test.
+
+x cd_* benchmark (and the others) may still have a race condition
+in sql_next_in (sql_next_stream). Might need to delete the record
+we get. Need to see if by deleting we can make the update fail
+since the record it would update should no longer exist. This might
+be the case with the current code.
+Check $rows that come back from the execute of the update query.
+
+x Need function to set stream info for rewind and unwind.
+Get rid of $in::stream, $out::stream.
+
+x Create multihost (dbq) version using combined data db queue. 
+(as opposed to the tcp version that uses the family of tcp peers)
+
+x Bring over family and stream tables from bench/schema.sql
+
+x Move tcp guts of unwind() to a separate sub
+
+x Find compile time errors in daemons with 
+echo 1234 | deftd_dbq.pl
+
+x Fix silent crash by redirecting stdout in the daemons.
+Printing to stdout in the daemons is bad unless stdout has been
+redirected. Apparently it causes the daemons to occasionally
+silently die. May have something to do with the sockets since it always
+happened with the most recently created ancestor. Weird.
+
+
+
+Diagram of the next execution model:
+
+main:
+{
+		      # implied read_context(); last_out=0;
+    &deft_x();	      # 0 in = next_in() = 0 out = next_out() = 1
+    call_deft("one"); # 1 in=next_in=1 out=next_out=2; 
+		      # push_context(); sub=main,line=1,in=1,out=2,last_out=0
+		      # set_context(sub=one,line=0,in=old_in=1,last_out=old_out=2,inc=0);
+    deft_y();	      # 2 in=2; out=last_out=0;
+    exit();	      # 3 
+}
+
+sub one
+{
+		      # implied read_context();
+    deft_a();	      # 4 in = next_in()=1; out = next_out() = 3;
+    deft_b();	      # 5 in = next_in() = 3;  out = next_out() last_out = 2;
+		      # implied pop_context(); then inc_context(); as usual after eval().
+}
+
+x call_deft("subname"); means send stream to that deft sub as a standalone script.
+The next line's input is that sub's output.
+
+x Can the _st version split streams? Probably yes. Implement this first.
+May need to make _st streams stop being an array index.
+
+x Should there be a call_deft() function that jumps to 
+a subroutine? Instead of putting the lines of the sub into
+an array of deft lines.  Maybe later.
+
+x At the end of run_core_sp's eval loop, need to rewind everything
+to streams[0] so the next process to run can use it. 
+
+x compile_deft() returns a hash of subroutines 
+
+x _st code must descend into blocks and execute them first.
+
+x Noah say it is ok to allow records with different columns
+in the same stream.
+
+x create if_col("col") with a following block that will send 
+records to the instream of the block and concat returned records 
+with this stream. maybe if_col("col", "deftsubname") so it isn't
+necessary to modify the parser. Or call it ifsub("col", "sub").
+
+x create if_simple('eval_test', "subname")
+
+x Warn in parse_findme() if incorrect use.
+
+x Warn in do_search() if requested term in the @def_sea doesn't 
+exist in the stream. Copy the good elements of @def_sea to @def_ok.
+
+x error check in do_sql_simple
+
+x clean graph before loading
+
+x Fix apparent disregard for LC_ALL by calling lc() in args to 
+cmp in keycmp() in runtlib.pl
+
+
+
+Version 3.9.0
+-------------
+
+Fixed multi-host features. Deft now runs (again) on multiple
+hosts. The new compile code is used by both versions. There is a new
+table 'config' in the Deft database. This version has gone back to
+using tcp sockets to pass the stream between processes, except for the
+process at the start of the chain which unwinds from the database.
+
+Fixed day of month error in sub read_file in deftlib.pl. stat()
+returns a zero base day, so need to add 1 to get a valid date.
+
+x remove $::port and use config table instead.
+x Move @hosts in deftlib.pl to config file and stream. What about @otherhost?
+x Create new utility update_hosts.pl 
+x Save active_hosts in config table
+x Save port in config table
+x rewind in deft.pl needs to sql_rewind, or not rewind.
+If machine.pl has mp version, then mp version of machine.pl must
+sql_rewind.
+deft.pl rewinding prints to stdout, that's bad.
+x Get unwind() and rewind() code from deft on albus.
+x Because we unwind stdin, and rewind to peer_handle, rsid and usid go away
+and we have ancestor id == aid.
+x Fix sockets and streams. I'm pretty sure $usid and $rsid are reversed.
+We build the family backwards.
+x Port compile code to tcp streams.
+x Redo tcpip streams as follows:
+usid is unwind stream id 
+rwid is rewind stream id
+x mp_run_core primary ancestor rewinds to db
+x Build ancestor chain backward
+x Ancestor gets usid 
+x Ancestor gets code using usid as key
+x Ancestor with no code unwinds from db
+x Ancestors with code unwind from stdin
+x All ancestors rewind to stdout (except last process)
+x Consider. $::peer_handle is rewind, and we unwind from stdin.
+Change unwind() and rewind() to taking the stream as an arg and eliminate
+the ::stream globals.
+x Replace depracated SQL_BINARY with { pg_type => DBD::Pg::PG_BYTEA }
+x Fix minor path problems in load_graph.pl
+x Fix this on gundam (and hagrid with mp version using multi hosts)
+Jan  8 14:12:32 gundam deftd[11089]: Can't use an undefined value as a HASH reference at /home/demo/public_html/deft/deftlib.pl line 134, <OR> line 7.
+
+
+
+Version 3.8.0
+-------------
+
+Now includes a complete working database driven web site powered by
+the Deft state machine, Deft scripts, and the Deft templates.
+
+New compilation model is more robust, simpler execution model, and
+should run a little faster.
+
+The multiprocessor version is broken.
+
+Perl is supported inline in main:, as well as user created
+subroutines. Anything that isn't a Deft API call is wrapped in a
+Deftish wrapper at compile time.
+
+Graph and state loading is vastly improved. Graphs know their
+directory and chdir to it at runtime which improves Deft code and
+template portability.
+
+Below are the developers completed tasks:
+
+x The $1 capture bug is back. Fix getvars().
+
+x Fix getvars to understand all $vars, even in the left side of
+regexes. Subroutine side effects return (not that they were really
+gone).
+
+x Needed to unescape $sub_text same as $line. 
+
+x Add faqdemo with data, etc. to deft CVS repository.
+
+x Remove $::dbh everywhere. 
+
+x change die to write_log line 223, runtlib.pl
+
+x chdir to directory that contains the graph, Deft and templates when
+machine.pl loads the graph. render() will assume the template path is
+good, and that will be true if we have chdir'd to the correct
+directory. Non-machine deft will just have to be run from the correct
+directory since it has no way to know where to go.
+
+x Save graph directory, and chdir to it in machine.pl, load_graph.pl,
+and load_states.pl
+
+x fix schema
+
+x fix load_graph.pl
+
+x fix load_states.pl
+
+x fix machine.pl
+
+C Continue to get graph name from graph source file. This means that
+the graph file has to be changed for each installation
+(e.g. development versus production) but that's probably the least
+confusing, simplest solution. Alternates are supplying he name on 
+the command line (but then you have to remember what you called it) or
+having the graph name in a separate config file, but then you still
+have to change that file between dev and production.
+
+x Completely rethink getvars(). Should probably happen at compile
+  time. Needs to be block sensitive. Needs to only get lvalues. Should
+  code turn into a hash:
+eval_me{code} = $str
+eval_me{vars} = @vars
+eval_me{where} = $column reference
+
+x Fix compile to put unwind, restore before and set_eenv and rewind
+after non-Deft code so that there is only one execution model.
+
+x Instead of pushing each line of inline-Perl, put them all together
+  in a single block in compile_deft().
+
+x Lines with user subs can be in blocks with other Perl code,
+however, globals and side effects are not allowed (or possible).
+
+x Make getvars smarter so it only works on lvars.
+
+x Sanity check new subs being abused. Must have return statement.
+Must be called as right side of assignment.
+
+x Change user subs into 'real functions' aka real subroutines.
+
+x Bring all subs into every name space (for now).
+
+
+Version 3.7.1
+-------------
+
+Variable substitution in runt.pl sub prep, and deftlib.pl sub
+do_sql_simple has been fixed. This fixes variable interpolation
+from the data stream.
+
+do_search() works correctly for -term searches (search engine
+arithmetic exclude).
+
+machine.pl gets owner from effective (or real) uid.
+
+New parsing understands { inside quoted strings, and parses
+correctly. Parser understands lines with internal \n.
+
+Note that Deft API calls cannot occur inside a block.
+
+Graphs don't need reloading after the states have been loaded.
+
+Graphs can be loaded before the states are loaded.
+
+Graphs are owned by the current user. States are attached to a single
+graph. All these graph and state changes required changes in the
+schema. 
+
+There is a new utility clear_graph.pl. It deletes a graph and all the
+associated records in table edge and table code.
+
+render() has an additional parameter which is a template name
+string. If it is null, the template name comes from the third
+argument. If the template name variable is not null it overrides the
+template name using the variable from the stream for the template
+name. 
+
+Now render has the unwind/rewind loop which used to be in r_emit().
+
+There a loads of (mostly small) bugs. See todo.txt for a rough overview.
+
+Completed items from todo.txt:
+x Make machine.pl get owner from effective uid.
+x do_search() has incorrect - (minus) handling. The - should apply to
+records which have already passed the search, not all records. Applying it 
+to all records is silly.
+x Remove any parts of code that interpolate variables.
+i.e. Don't remove $2700 from submitted strings.
+It was a bug with var substitution when interpolating values
+for the SQL. Params might be better, albeit harder to parse out(?).
+Noah: parsing \$vars out of SQL? 
+x Noah: line 86 runt.pl \W|\Z, line 1450 deftlib.pl
+x Add quote awarness to getmain().
+Curly's inside quotes in Deft sources will not compile.
+x Noah: Can we fix parser to understand lines end with ; not \n? 
+Want to allow arbitrary whitespace in lines.
+x Need not to have to load graph twice. Can't everything stay the same
+and update node.code_fk? Why do graphs need code to load 
+(except for node.code_fk)?
+x Add user awareness to load_graph.pl and load_state.pl
+Get user id from the OS.
+x New fields added to deft.sql
+x Update code to use new fields.
+x Associate Deft scripts with a graph. The combination graph_name/script_name
+must be unique. This allows the whole project to be moved to a
+different directory/host without disturbing the Deft system db.
+x Graphs must be unique within a user (but not across all users).
+x remove code.is_state
+x machine.pl should probably check node_pk belongs to the current graph and logname
+x Would be nice to warn the user if they request a search on a field
+that do_search() hasn't been enabled to search on.
+N Remove the $fn_var and filename stuff from runt.pl.
+This is necessary for the script to determine the output
+as is necessary in the content manager.
+
+
+
+
+
+Version 3.7.0
+-------------
+
+The last stream from one Deft script can now be the head stream of the
+next Deft script (at least for scripts run by machine.pl). This
+required changes in machine.pl, deft_st.pl deft.pl and sql_lib.pl (and
+some others). create_family() works differently. sql_clean_up() has
+been replace by sql_duo_clean() which is always used in full cleaning
+mode. Expect sql_duo_clean() to change in the future.
+
+Streams are now more consistent. All scripts have an input stream
+created at the beginning of execution, even multitasking Deft. All
+Deft internal API calls must unwind and rewind (including
+render). Even the last Deft process rewinds. At the end of a script, a
+special call to unwind is made to crush the record set into one
+record. This supplies the return value from _return. 
+
+get_ref_eenv() has been changed to return a ref to a copy of eenv.
+
+
+Completed tasks from todo.txt:
+x replace all %::eenv with sub calls?
+x Change dcc() in deft scripts that use do_search()
+
+x Code review get_ref_eenv() and all it's calls with Noah.
+x Ask Noah:
+Is $var interpolated in a string for some reason?
+See deft_cgi().
+x dcslib.pl read_tab_data() needs to unwind, rewind, and do
+the usual stuff with streams.
+x The last stream is ok for cars.deft, but null with test.deft
+running with deft_st.pl. deft.pl untested.
+x some stream colums are left behind in table stream_column
+They look like head stream records.
+x unbind emacs ctrl-backspace, or re-bind to plain old delete.
+x deft.pl is broken, some how. No output from cars.deft.
+x close_peer right after sending the stream id to the peer.
+Should be no need to keep the socket open.
+x (sortof) a change to run_core and deft.pl could simplify the final record
+state. We just need to (essentially) crush the final record set and leave
+eenv with the resulting single record. The family of streams can go away.
+x change deft_cgi() to set eenv, but not rewind. We'll get eenv
+values afterward, and rewind() as necessary. It has to be
+this way because run_edges() needs environment stuff before
+it calls run_core() and so no family or streams exist.
+x crush records after the deft script is done so that there
+is one record. run_edges() will unwind and rewind. This is where 
+run_edges will get the return value.
+x _return is true, unless something purposely sets it to false.
+It could be set to false by a Deft script testing something, 
+getting a failed test, and then returning false. Everything
+else returns true.
+x why doesn't draw_all.deft return true?
+Fixed a bad declaration and some bad logic.
+x make dump_stream() rewind.
+x Yikes! last process is now more like others. It has streams and 
+a family entry. Fix deft.pl and run_core().
+x Fix: The end process doesn't have an entry in the family table, and
+it doesn't have an out stream.  
+x Make sure the last process has an output stream.
+N (Feature created, not used) sql_clean_up() needs to do something so that last stream
+survives for the next script.
+N (Valid eenv, start with rewind) make run_core keep a stream if one already exists, and
+not run deft_cgi (which would overwrite the exsiting stream).
+x Need a way to get the new bf_pk from insert.deft to 
+the next script, and then recode insert to just do the db insert
+and leave it to the machine as to whether the next step is edit or 
+draw_all.
+x Fix faqmgr to keep findme through the delete process.
+x Need a better reaction to reloading the graph than web the machine getting unhappy.
+An invalid next_node needs to reset the states to something rational,
+like the initial state. Failing to make output is bad.
+x Remove the first_pass and is_head stuff from run_core() in deftlib.pl.
+x Fix deft.pl and deft_st.pl to create a one column record and rewind 
+it to the head node. Remove any API and user code that is 
+special to the head node.
+x init $::out_stream before calling deft_cgi()
+x Fix "keywords" logic in deft_cgi()
+x deft_cgi() always creates column '_return'
+x Make sure keep() can't remove underscore vars.
+(at least for now).
+x Removed. What is the use of eenv{keep} from keep_core()?
+x Make sure deft_cgi() throws out all underscore vars.
+We don't allow external stuff in the internal vars.
+x Fix all API calls. unwind() must come before $first_flag.
+Perhaps unwind() should return 1 the first time, even 
+if no records unwound.
+N Maybe unwind() can be called with a flag var to indicate
+first call in a sub.
+x run_core needs a fix for user subs to run at least once, even 
+when they are the head and have nothing to unwind() (which returns zero).
+It seems wrong for unwind() to return 1 and not have unwound, which
+means there needs to be a flag for user sub calls in run_core.
+The simple hack seems to make an extra record. Opps.
+x Fixed. Sorting is broken again.
+get_ref_eenv() returned a ref to eenv, not a ref to a copy of eenv.
+C Add to docs: user written subs differ from internal funcs in that
+restorevars() is called before user subs. If restorevars() fails, then
+execution of the user sub will terminate. restorevars() fails when
+there is an empty %eenv. This could happen from one empty record,
+and that used to be able to happen from a call to deft_cgi() when
+there were no CGI vars. It would be nice if user subs and internal
+functions were more alike in this regard. Or less different.
+N Can Deft be executable? Can the machine be called from Deft?
+Is there a way to not have a copy of machine.pl in a web directory?
+N (Apache can't cope with the symlink, even with Options FollowSymLinks. 
+Dunno why.) symlink machine.pl in the web directory and make machine.pl smart
+enough to cope with that.
+N (This means loads of record updates) Could a Postgres array of bytea be a queue? Read and write
+in order, and use eof marker. 
+x Comment out print MOUT everywhere.
+
+
+
+
+
+Version 3.6.4
+-------------
+
+We now have API documentation.
+
+Fixed unwind(). It should be transparent, but deft_cgi() always
+creates a single record and rewinds it to the head of the stream.
+
+Handling of CGI "keywords" parameter updated.
+
+get_ref_eenv() was returning a reference to to eenv, and we need it to
+return a reference to a copy of eenv. This might need more fixing in
+the future. Perhap it should return a reference to eenv, and anything
+that needs a static copy should make one. Or perhaps using
+get_ref_eenv() is wrong and we should return a hash. Is it even
+possible to return a hash?
+
+
+
+Version 3.6.3
+-------------
+
+Fixed a bug in deft_cgi() where it created a blank record in the
+stream.
+
+Fixed get_ref_eenv() which was returning a reference to the local
+%eenv. However, the usage of the reference was expecting a reference
+to a copy of the eenv, not a reference to the real thing. As a result
+control column sorting wasn't working. That is, control columns
+created with dcc() weren't sorted.
+
+Removed MOUT debugs in machine.pl, and changed all print and die
+statements to write_log().
+
+Added example web stub www.pl.
+
+Quick fix to template timestamps. They weren't loading before. Now
+they load everytime. The permanent fix is on the todo list.
+x New docs, new install docs, update release notes, make a new release.
+x Needs vacuum. What is that weird delay at the end of cars.deft, once the output finishes?
+
+x Enable cleaning stream_column.
+(Was probably working all along, but other things were broke.) 
+C Multitasking deft.pl doesn't keep $_next_node because
+_next_node is a state machine column.
+x Fixed. multi deft.pl loses one record every rewind/unwind.
+rewind does 146, then uw does 146, so record is lost in second
+process after the unwind, or is lost in rewind every time.
+x Fix _next_node. deft_cgi() was overwriting it in run_core. Move set_eenv()
+after deft_cgi().
+x Fix _return. It needs to be set to undef in run_core. If the deft
+script sets it, that's great. But if it is undef at the end 
+of run_core it needs to be set to 1. It wasn't undef'd at the top
+of run_core, so it had the value from before which was apparantly
+always 1.
+x load_graph.pl needs a date fix since it won't load a graph 
+the first time because the date is zero/null/undef.
+N Get rid of {data} and make %::eenv 1D hash.
+N encode/decode scheme turns + into space. Need special case.
+x Fix machine.pl to have new stream features and single task stuff like deft_st.pl
+x Move all the sql code into sql_lib.pl
+x Set $::out_stream to zero when the last code is run.
+Does it cause a problem that deft_st.pl has the wrong $::out_stream 
+in when the last code is run?
+x Make deft_cgi single_task aware, move back to deftlib.pl
+x Move deftlib.pl get_code(), put_code to code_archive.pl
+x Fix all instances of is_head()
+x Try the vacuum tuning.
+Locks the db. 
+N Use a sequence for sql_rewind() numbering? Naw.
+a) would need to reset the sequence all the time
+b) multiple records are inserted, but the sequence would need
+to only hit on the first insert, then stay the same for the rest.
+x Who is failing to inactivate the head stream? deft.pl?
+Not a bug. Must have been due to failure to exit sql_unwind() correctly. Works now.
+x What caused error with no in_stream?
+Sep 21 21:29:53 hagrid deftd[12146]: Use of uninitialized value in pattern match (m//) at /home/demo/public_html/deft/deftd.pl line 117, <OR> line 7.
+Sep 21 21:29:53 hagrid deftd[12146]: Use of uninitialized value in concatenation (.) or string at /home/demo/public_html/deft/sql_lib.pl line 175, <OR> line 7.
+Sep 21 21:29:53 hagrid deftd[12146]: Use of uninitialized value in concatenation (.) or string at /home/demo/public_html/deft/sql_lib.pl line 204, <OR> line 7.
+Sep 21 21:29:53 hagrid deftd[12146]: Use of uninitialized value in concatenation (.) or string at /home/demo/public_html/deft/sql_lib.pl line 205, <OR> line 7.
+x Change over to single table for streams. Use a varchar column to track
+a combination key of out_stream and row index number.
+x create deft_st.pl single process where everything is in 
+a loop in deft_st.pl and there are no peers. This should be faster
+and it can be used to find out why the db streams are so slow.
+x Fix sql_clean_code for the new stream structure.
+x New tables in deft.sql
+x recode everything to use new stream tables.
+x try using a new connection in sql_unwind() and disconnect at the end.
+x Find a work around to open/close db connection in sql_unwind()
+x Remove sleep(1) from sql_unwind().
+X How do we handle async database updates to stream tables? Perhaps we can 
+sync via the family table.
+N Split function of get_main into two funcs, perhaps using the same core.
+One returns list of lines. The other returns the whole subroutine as a string.
+x table family may not need a primary key. We alway search it with the out_stream.
+x Do all the major db stream changes necessary in deft.pl
+x db stream changes in deftd.pl (all done?)
+x Move all the unused code to code_archive.pl
+x Put streams into the db
+x Create streams as temp tables (which are automatically dropped 
+at the end of the session).
+Tables need:
+st_pk integer from st_seq,
+st_ok boolean,
+col bytea, etc.
+x Move all old stream subs to code_archive.pl
+unwind, rewind
+C Needing new cols in rewind() is only checked one time on the first
+record rewound by a process.
+x Might need process id or something to know the ancestor's stream.
+This doesn't even exist when the child process comes into existance. 
+Since we don't need sockets, consider building processes differently.
+x Print in stream id to stdout (my ancestor) when creating process chain.
+N How to rewind() in deft.pl for last process which doesn't have an output 
+stream? Even if it has an output stream, the stream vanishes when the 
+process exits.
+N Need a family id fid for the whole chain of processes. This simplifies what 
+we print to stdout for each process that is forked.
+x During ancestor/chain/family building, keep the code in the db
+in table family and use an id to get it.
+How about $::out_stream as a process id?
+x Is there an efficiency problem with all the stream tables sharing a 
+the same sequence st_seq?
+N Make deft suid.
+x Load templates into the db. Gets rid of path problems.
+x new table "templates" in deft.sql
+x Store compiled .rnt in db
+x Retrieve compiled templates from db
+x Hard code $use_db_flag in runt.pl render().
+x sql_exists_template() could returns te_pk or zero.
+x Change do_search() to mark good records, and send entire incoming record
+set to output
+x Remove the _return thingy at the end of unwind.
+Brief testing was fine. Do more testing. This feature was probably 
+created during debugging the return values. I'm almost positive it
+wasn't used.
+x Check out unwind() in deftlib.pl where we hack %tmp and %::eenv to get a return value.
+x do_search only returns underscore fields and it's own fields
+in the single record when there the search fails. Things are ugly 
+when an aggregation func fails to return any records, therefore
+do_search returns a minimum of one record, however that record is
+missing most of the original columns. Ask Noah about this.
+C Should machine.pl create a variable "state" or something like that
+which holds the last node_name invoked? Probably yes, then recode
+everything deft scripts and faqmgr.graph to deal with this.
+State info should not be hard coded in the templates.
+x Add is_wait field to table edge
+x Parse is_wait in load_graph.pl
+x Manage is_wait and to_node_fk in machine.pl
+x Put to_node_fk into $::eenv{data}{_next_node}
+x Fix web pages to have hidden field _next_node.
+x Get Noah to fix regex in getvars() in deftd.pl to not freeze $1, etc.
+C (Next node) Should state be last node or next node?
+x wait is special. It has the name of next node to edit. Fix parsing, etc.
+x Create a smarter graph and deft loader
+x Deal with single quote issue in data and do_sql_simple(). A var containing a 
+single quote would make a real mess.
+x Add date info/smarts to graph loading.
+C Don't remove $vars from templates since removing them will break
+using templates as templates.
+x Show Noah line 81 of runt.pl (?=\W) to fix short var problem.
+C $::eenv{data}{findme} has a wrong value
+before a process rewinds. This a leftover from ancestor chain
+creation. If so, we should fix that (although the grid version won't
+have this problem). Noah is not inclined to fix it now.
+x load_graph.pl needs to die if a node or edge name does not exist.
+C (requires the grid) Correctly re-implement deft return values.
+C Deft scripts must be complete, and the whole script is read into the code table.
+There is no need to determine what sub is main, and what sub is user defined, as 
+was the case when we (briefly) tried to load only subs into the code table.
+x fix deft.sql
+x fix machine.pl
+x fix sql_load_edges()
+x fix sql_insert_edges, etc.
+x fix load_graph.pl
+C In load_graph.pl, if $edge =~ m/^\!/ then set invert.
+If ($edge =~ m/^\".*\"$/; then set is_var.
+x Create feature to do not ! of return_col() or internal col boolean test.
+x Create feature that edges "true" and "false" are internal
+(syn sugar).
+x Create syntactic sugar where an edge based on a column name
+has the boolean value of that column.
+x Add timestamp to graph and code tables for use by smart loader.
+x Add insert/edit
+x Add delete 
+x Add valid field, and use for delete instead of deleting record.
+x Fix sql_load_edges() which returns a hash. This can't possibly work.
+Needs to return an array of hashes, the array ordered by edge_order.
+Also fix run_edges() in machine.pl
+x Remove runt_compile.pl debugs that spew into err*.out
+by commenting out parse_nest() in compile().
+x Comment out sorting which was only a partial fix.
+x edges that do work return true upon success.
+x Fix findme_encoded.
+x Fix last node rewinding to stdout.
+../deft/machine.pl faqmgr draw_all | less
+x Test faqmgr draw_all, click edit button.
+x Change to edge only execution. Nodes are only labels.
+x Allow "wait" as special to_node
+x Implement $::eenv{return} in run_core in machine.pl
+x Bad things happen if a graph is loaded, but its states have not been loaded.
+[demo@hagrid deft]$ ./load_graph.pl test.graph
+Graph name:test
+s:msearch e:false f:cars
+DBD::Pg::st execute failed: ERROR:  node_seq.currval is not yet defined in this session at ./deftlib.pl line 190, <OR> line 7.
+sql_insert_node 4
+ERROR:  node_seq.currval is not yet defined in this session
+Database handle destroyed without explicit disconnect, <OR> line 7.
+[demo@hagrid deft]$ ./load_states.pl ../msearch
+N In order for the machine to be able to call code that calls subroutines,
+we need to have some library of subroutines callable from node code.
+In other words, the machine needs to load a user library. It might be best to 
+load all of a user's code instead of just loading one subroutine at a time.
+x  In machine.pl change sql_load_edges() sql_load_node() to return 
+the source, not the code_name.
+? Do we need some syntactic sugar for deft_func return values.
+Right now returns come back in $::eenv{return}. 
+x Create return_col() return_true() return_false() in deftlib.pl.
+x parse_deft_block() in machine.pl needs entire text of 
+user defined subroutines, in addition to individual lines
+from main:. We might as well just load the whole deft script
+into the db. Could pre-parse.
+N Need to either make machine.pl same as deft.pl and able to call
+native deft, or have to create a deft database table for name/value pairs
+to save environment vars, cgi, etc.
+N Change funcs in load_states.pl to parse deft subs as main:
+N Try loading only the body of the sub, and executing on the fly. This is
+more suitable to Deft, and gets around problems with # being parsed by eval().
+x In machine.pl $name_space_ref and %name_space are probably 
+no longer useful.
+x unbind ^/ in .emacs. It seems to be undo.
+x Check the project in to sourceforge, and test. six.
+x load_graph.pl needs to populate graph table, and gr_fk in node table.
+x load_graph.pl deletes existing nodes and edges when loading 
+an existing graph.
+x machine.pl need to use graph name to get initial node_pk
+x Create state machine source file format call the reader load_graph.pl
+main index_t draw_index
+main edit_t edit_page
+main delete_t delete_verify
+main new_t new_record
+new_record true edit_page
+delete_verify verify_ok delete_final
+form_one test_data draw_one
+form_one data_ok save_data
+save_data continue_one draw_one
+save_data save_one draw_main
+x Change machine.pl into variant of deft.pl and all code
+becomes deft code instead of Perl.
+N How does the machine access the environment? Via a hash?
+x  Don't try to restore $1, $2, etc. in sub restorevars() in deftlib.pl.
+Shouldn't restore any of Perl's built in variables.
+x Get Noah to help fix read_state_code() to ignore blank lines, etc.
+x Add n-way state machine
+x working in deftlib.pl and machine.pl
+x create hash of loaded code_name's
+x finish run_edges()
+x test the machine.
+x Fix cars.deft by creating read_tab_data(). 
+Didn't need the set_default() user func trick to get 
+what used to be config values into the stream.
+x Add field to deft db: db_canonical_name
+insert into deft_tables (db_canonical_name,db_name,dbms,db_host,db_port,db_user,db_password) values ('bug_pages','bug_pages','Pg','hagrid','5432','bug_pages','orchid')
+x Fixed do_search()
+x Fixed do_sql_simple()
+x deft.sql has been updated. Drop table and re-create (and repopulate).
+x Switch all the .deft scripts over to using the db name.
+x Fix all the Deft internal functions to using the db_name and deft_connect().
+N (actually need a func that returns $dbh for the requested db, which it does partly
+by reading .config) Probably want a Deft internal function that reads a config file (via read_dot_config()
+and puts the values in the stream.
+x Each function that needs a db should just call deft_connect().
+A routine that finds the deft db, figures out how to connect to the required db, and 
+returns a good dbh for that db.
+N Add support for --config='filename'. Unnamed command line args 
+are still in @ARGV.
+x Add group to xinetd deft config
+x Need deft internal deft_config() called based on --config command line arg.
+N Get config values from the stream.
+Config values are in use defined subroutine(s).
+N Consider a feature to move all but ancestor process to another CPU
+(e.g. better granularity in load balancing)
+C dcc voids dwim by not being able apply sort to a different column
+from the distinct. (Need to use a special agg operator for the 
+sorted column, and sort on it, then dcc() on it later).
+x Release version 3.4
+x Fix runt_compile.pl output file name
+x Fix failure to create and use $path in deftd.pl and deftlib.pl
+x Fix do_search to always rewind at least the search status vars. 
+x dcc() must not consider records with a missing agg var unique. 
+Records that fail exists($hash{$distinct}) must not be emitted.
+x Stop $menu from doing a partial sub for $menu_item in prep() in runt.pl
+C (see below) Non-terminal nodes don't have a good path for logging. 
+May need to pass a path in eenv to all nodes. This assumes that the 
+user running the deft script has an account on all machines.
+C If there is no final output function, deft.pl will rewind
+the stream to stdout (feature)
+x There may be a bug in field substitution in runt.pl where 
+$email_href gets the value of $email.
+x Remove old stuff from RCS dir
+x Fix deft.pl to not require any libraries, and make it executable
+from anywhere (no path dependencies). xinetd will run deft 
+out of the demo account.
+x Empty record set makes runt not render root of the template.
+(at least in the deft/ms/ version of runt.pl)
+x Why is render() hard coded with an HTML header?
+C How do we handle records where the agg var is undef or null?
+Seems like these records should fail the distinct test
+at render time. (this is a feature)
+x make deft execution directory independent with that path trick
+(or something)
+N fix rewind() to throw out everything except $::eenv{data} 
+  if is_head. Test with dump_stream().
+x remove -w from shebang in deft.pl...
+x Make unwind() is_head aware
+x Get deftd.pl to open stderr to a file. Might try getting stderr to 
+open to /usr/bin/logger -i -t deftd which logs to /var/log/messages
+x rewind, unwind, put_code, open_peer, deft.pl main? child? 
+x What about deft.pl?
+x rewrite deftd.pl to use xinetd for all the daemon-like stuff.
+x test SQL in read_db
+x Original parent's eval needs a special rewind since there aren't 
+  any children to rewind for.
+N Multiple user's daemons should run on separate ports.
+x Fix do_search to not search field "findme".
+Maybe explicitly specify which default fields to search?
+x deft_cgi() is weird, and isn't quite working yet
+It can't work. Need to get CGI and anything else in original deft.pl
+and probably substitute any vars in the pre_parse_main() and modify
+The coderef passed up the line.
+x Fix read_db in dcslib.pl to use is_head() to optionally unwind.
+x Remove debugs 
+N Need to test array variable freezing. It is probably broken.
+N Pass state info between processes with $::eenv{state}{foo}
+x Need more smarts in do_search. if the query exists but is "" then still
+need to use the default
+x There are some missing strings somewhere in the rendering code.
+Almost certainly bad input, but need to understand if a workaround
+and/or error checking is necessary.
+x Calling from http causes something to hang. Need to find out what.
+x do_search() is broken. Probably something with $findme and the term and op
+x Fixed last_coderef in preparsemain()
+x Get rid of the trailing $ on variable names.
+x Get render() working.
+x r_emit() in runt.pl expects real variables names for vars in the template,
+  but deft uses names like "var$".
+  For now, convert names.
+x Add rank$ when rewinding in do_search() in dcslib.pl
+N Call the guts of build_agg_eval() from dcc() to fix the args
+  to be the correct format/syntax.
+x Get dcc() working.
+x port all runt and most of ms to deft and
+  turn runt api into deft funcs
+x Eval last deft source sub in deft.pl
+x Fix do_search to unwind and only rewind matching records
+  and add columns as necessary for the extra info.
+N port build_agg_args (dcslib.pl) to deft. May need state info, or 
+  needs to be a deft func.
+N upgrade the directory detection in config.pl by doing chdir, etc.
+  Can't detect directory in daemons since they don't have a terminal.
+x fixed line 251 in restorevars() not explicitly checking for @
+x port msconfig.pl settings to config.pl
+x delete sub get_record().
+x use strict in deftlib.pl
+x fix readdb or whatever to use rewind and unwind
+x make readdb or whatever to be an internal deft func.
+x $::eenv is lost in distinct_on() except for the destination column.
+x Created @rows, but still missing dup. rows.
+x Fix unwind() to not overwrite $::eenv
+N Make a new demon that doesn't detach from terminal.
+x Make new demon check for only one $::eenv{code} left,
+  and execute it, printing output to stdout.
+  (remember, cgi scripts need to write to stdout)
+x Will there be a problem because the parent handles requests
+  then dies, and and the child becomes the new parent? Maybe not,
+  as long as stdout stays the same.
+
+
+Version 3.6.1
+-----------
+deft_st.pl and machine.pl are now single-tasking. This means that one
+task runs all the deft functions in serial, synchronous fashion. The
+Deft data stream is in memory. Basically, this is simpler and faster
+for small applications. 
+
+deft.pl and the related daemon deftd.pl (more a child than a daemon)
+are still multi-process and essentially asynchronous. The Deft data
+stream has been moved into the database. This is horribly
+slow. Optimizations to follow.
+
+We suggest that this version of Deft be installed and run by a user,
+and not by a super-user or a special Deft user.  deft_st.pl does not
+require xinetd, nor does machine.pl. 
+
+Since the templates are in the database, execution of machine.pl has
+fewer constraints about the paths to templates. This has advantages in
+a web environment.
+
+
+Version 3.5
+-----------
+Deft streams implemented in 2 tables in the database. Works fine.
+Very slow, even after some serious optimization.
+
+Include docs in tar file.
+
+Compiled templates to the db (still needs a little work).
+
+State machine is working.
+
+
+Version 3.4
+-----------
+Fixed the output file name in runt_compile.pl included a hardcoded path.
+
+Fixed failure to create and use $path in deftd.pl and deftlib.pl
+
+Fixed do_search to always rewind at least the search status vars. 
+
+
+Version 3.3
+-----------
+dcc() in runtlib.pl fixed to only emit records with non-null
+keystr('$distinct'). The fix involved an extra clause in the $agg_eval
+that we build dynamically. 
+
+do_search() in dcslib fixed to take a configuration parameter, and to
+always at least emit one record with the search properties %sp. This
+is necessary only when zero records are found.
+
+I discovered that when there were no output records, the last record
+from %rec was still around, and made it's way into
+%::eenv{data}. First I just undef'd %rec, and copied as when there are
+records in %rec, but that's complex and indirect. Instead the code now
+simply copies %sp to %::eenv{data}.
+
+Fixed the do_search call in msearch.deft.
+
+
+-----------
+Version 3.2
+Fix LGPL notice.
+
+
+-----------
+Version 3.1
+Small fixes to dcc() and related code so that empty record set will
+still render root nodes of templates.
+
+Created installation instructions.
+
+Make deft executable from other dirs, without breaking internal requires.
+
+
+
+---------
+Version 3
+Seems to work well.
+Change to $var variables in templates.
+Template control loops now use one based tag counting
+Deft scripts use dcc()
+Auto capture cgi
+No command line args yet.

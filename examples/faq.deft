@@ -1,0 +1,54 @@
+main:
+{
+    # Isn't keeping $_next_node wrongthink?
+    keep(list($findme, $findme_encoded, $_next_node));
+
+    if ($findme_encoded)
+    {
+	$findme = www_dequote($findme_encoded);
+    }
+    #$findme = enc($findme, $findme_encoded);
+
+    do_sql_simple("faq",
+		  "",
+		  "select * from faq where valid=1",
+		  list($faq_pk, $question, $answer, $keywords, $valid));
+
+    #do_search args: findme col, default, fields to search, found records col
+    $rank = 0; # Must pre-define args that subs will populate
+    $s = 0;
+    $es = 0;
+    $recordsfound = 0;
+    do_search($findme,
+	      "baja",
+	      list($faq_pk , $question, $answer, $keywords),
+	      $rank,
+	      list($s, $es, $recordsfound));
+
+    #$rank = 2;
+    dcc($distinct_faq_pk, $faq_pk, [$rank . " >= 1"],[$rank . ",dn"]);
+    
+    # ordinal isn't used, so comment it out.
+    desc($ordinal, $faq_pk, [$rank ." >= 1"],[$rank . ",dn"]);
+
+    dump_stream("x","distinct_faq_pk,faq_pk,ordinal");
+    # print "$distinct_faq_pk\t$ordinal\t$faq_pk\n";
+
+    $findme = CGI::unescape($findme);
+    $findme_encoded = www_quote($findme);
+    $fn = "-";
+    $template = "../faqdemo/draw_all.html";
+    # render($fn, $template, "Content-type: text/html\n\n",);
+}
+
+
+# perl enc
+# {
+#     my $findme = $_[0];
+#     my $findme_encoded = $_[1];
+#     if ($findme_encoded)
+#     {
+# 	$findme = www_dequote($findme_encoded);
+#     }
+#     return $findme;
+# }

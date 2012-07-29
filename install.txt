@@ -1,0 +1,432 @@
+
+Deft Version 3.9
+
+Table of contents
+- Requirements
+- Running Deft
+- Postgres notes
+- xinetd config
+- iptables
+- Apache notes (coming soon)
+
+At the end of each section is a note about how verify that the steps
+in that section worked. We recommend that other Linux documentation
+creators follow this new convention.
+
+There is a complete working example with Deft, HTML, the state
+machine, and a database in the faqdemo directory. See install.txt in
+that directory for details.
+
+Please note that the multi-host version of Deft can probably be
+spoofed into running arbitrary code as the Deft user. Only open the
+Deft xinetd port on secure, restricted, trusted networks.
+
+------------
+Requirements
+
+A minimal Deft installation now requires only Perl, the Storable Perl
+module, and a database. The database is required. Deft stores its
+internal configuration, as well as some user data (templates, state
+machine graphs) in the database. We haven't tried running Deft without
+the Socket Perl module; even though this module isn't used by the
+single tasking Deft (deft_st.pl), it may still be a requirement. If
+you get warnings or errors, please install it.
+
+For now the database needs to be Postgres, although this is probably
+easy to change. We recommend you use deft_st.pl which is the single
+tasking version. It is faster and easier to install. The
+multiprocessor version of deft (deft.pl and deftd.pl) is currently
+being revised.
+
+(The multiprocessor/parallel processing version of Deft is broken.)
+Multi-host, multi-process Deft requires Linux with xinetd, Perl, and a
+few Perl modules. We have only tested Deft on Redhat 8.x and
+Fedora. The paths in the following instructions are based on
+Redhat/Fedora standard paths.
+
+It is no longer possible to use Deft without a database. 
+
+We have been developing with Postgres 7.3, but any of the recent
+version of Postgres should be fine. Current development uses
+PostgreSQL 7.4.6.  
+
+You'll need several Perl modules. Get these from cpan.org. There is a
+'download' link near the top of each of the following pages.
+
+- Storable (now seems to be included with Fedora)
+http://search.cpan.org/~ams/Storable-2.12/
+
+- DBI (probably included with your Perl distribution)
+http://search.cpan.org/~timb/DBI-1.42/
+
+- Database driver for DBI. For Postgres this is DBD::Pg.
+http://search.cpan.org/~rudy/DBD-Pg-1.32/
+
+- Socket (seems to be included with Fedora)
+http://search.cpan.org/~tomc/Socket-1.5/
+
+Verifying this section: If the Perl modules' make commands execute
+without error, then the modules are installed. Perl module
+installation fails so rarely that we won't provide detailed
+diagnostics.
+
+
+------------
+Running Deft
+
+For this example, assume Deft is being installed by user mst3k.
+
+Copy the file dot_config.dist to .config
+
+cp dot_config.dist .config
+
+Make the permissions of .config user read/write only. This file must
+not be readable by anyone else.
+
+chmod 600 .config
+
+Edit .config with your favorite text editor.
+
+Change the deft password to the password you use when creating the
+Postgres user 'deft' (see below).
+
+Do the Postgres configuration below and then you should be able to run
+the Deft script cars.deft
+
+cd /home/mst3k/deft
+./deft_st.pl cars.deft
+
+Your output should match cars_output.txt. This Deft script should run
+in a second or less on a normal (2.4Ghz) machine.
+
+Verifying this section: Errors will be in:
+deft.log
+/tmp/err*.out
+./err*.out
+
+You can create a new script with only these lines: 
+
+ main:
+{
+    read_tab_data("/home/mst3k/deft/demo.dat","sequence,make,model,displacement,units");
+    dump_stream();
+}
+
+You can also check the syntax with perl -cw as follows:
+
+perl -cw cars.deft
+
+Running cars.deft is simple, so we expect it to work.
+
+
+--------------
+Postgres notes
+
+We'll cover Postgres since that's what we'm using. We rate Postgres
+as superb in the all areas including speed, standards compliance, features, and
+robustness. 
+
+Just about every Postgres install needs changes to pg_hba.conf and
+posgresql.conf. On Redhat/Fedora these files are found in
+/var/lib/pgsql/data. We have found it necessary to create a postgres
+Linux account whose home directory is /var/lib/pgsql.
+
+Step 1.
+We recommend that you force all connections to your database to
+use MD5 authentication. In our case we have several databases
+on the same server, and there are more restrictive permissions for
+the other databases. The following will allow the localhost, and
+another machine with ip address 10.10.1.1 to access your Postgres
+server and forces them to use MD5 authentication.
+
+su or login as postgres. Your default directory should be
+/var/lib/pgsql.
+
+Modify file /var/lib/pgsql/data/pg_hba.conf. These lines are at the end of the file. 
+# TYPE     DATABASE    USER    IP_ADDRESS    MASK               AUTH_TYPE  AUTH_ARGUMENT
+local      all         all                                      md5
+host       all         all     127.0.0.1     255.255.255.255    md5
+host       all         all     10.10.1.1     255.255.255.255    md5
+
+
+For multi-host Deft (deft.pl) you may want to allow all of a trusted
+subnet to access Postgres:
+
+# TYPE  DATABASE    USER      IP-ADDRESS     IP-MASK        METHOD
+# All hosts on 10.10.
+host    all         all       10.10.0.0      255.255.0.0    md5
+
+
+
+
+Step 2.
+As far as we can tell, most technologies that access
+Postgres use tcpip sockets. This is true for JDBC and Perl DBI. Modify
+a the tcpip_socket line in /var/lib/pgsql/data/postgresql.conf as
+follows: 
+
+#       Connection Parameters
+# 
+tcpip_socket = true
+
+Step 3.
+su to root and start/restart Postgres.
+/etc/rc.d/init.d/postgres start
+
+
+Step 4.
+Go back to being logged in as yourself (a non-root,
+non-postgres user, mst3k for these examples). You need to create a
+user 'deft' that matches what you entered in the .config file. You'll
+also need to create the deft database.
+
+psql -U postgres template1
+create user deft with createdb encrypted password 'a_good_password';
+\q
+psql -U deft template1
+create database deft;
+\c deft;
+\i deft.sql
+\q
+
+You should now be ready to run the cars.deft example.
+
+In order for Deft scripts to access user databases, there must be a
+record in deft_tables. Create a record in deft_tables with info
+describing your database. The db_canonical_name is the name Deft will
+use to refer your database.
+
+We will have examples and documentation in the next release.
+
+
+Explanation of Postgres commands:
+psql is the Postgres command line utility.
+
+\q is psql quit
+
+\c is psql change database
+
+\i is psql execute SQL commands from a file
+
+Verifying work. You can use the \d command to view all tables or the
+files for one table.
+
+# view all tables
+\d
+
+# view fields for table deft
+\d deft
+
+
+Verifying this section: pgsql should run as expected. If you make a
+mistake in pg_hba.conf or postgresql.conf postgres probably won't
+start. I suppose there'd be an error message on the command line, or
+in /var/log
+
+As root:
+
+cd /var/log
+ls -alt * | more
+
+Use less to view recently changed files.
+
+It is possible that iptables would interfere, but not likely on a
+local connection.
+
+Postgres is easy to work with, and robust, so we don't expect any
+problems in this section.
+
+
+If you are going to run muti-host Deft, you'll need some host entries
+in the config table. Run psql, and an SQL insert for each host.
+
+insert into config (name,value) values ('hosts', 'zeus');
+insert into config (name,value) values ('hosts', 'athena');
+insert into config (name,value) values ('port', '9000');
+
+Exit psql, and run the new utility, update_hosts.pl. This utility
+checks that hosts you'd like to use are active. This saves a time
+consuming check when Deft runs a script. However, it also means that
+if host(s) go down or are added, you need to rerun the script. Bad
+things probably happen if Deft expects a host to be up, and it isn't.
+
+
+To use Deft to run SQL queries against one of your databases you need
+several configuration settings. You must decide the userid that will
+be running the Deft scripts. In a multihost setting, each host needs
+this user id. In the following example, we'll use these values:
+
+database name: faqdemo
+database password: demopass
+Postgres user: faqdemo
+Linux user: mst3k
+Linux hostname: zeus
+
+Run psql or use your favorite method to insert records into the Deft
+database.
+
+Connect to the database 'deft' or 'template1' as 'postgres':
+
+create user faqdemo with encrypted password 'demopass';
+
+Connect to the database 'deft' as the user deft:
+
+insert into deft_users (logname) values ('mst3k');
+
+insert into deft_tables
+       (db_canonical_name, db_name ,dbms,db_host,db_port, db_user ,db_password, du_fk)
+values ('faqdemo','faqdemo','Pg','zeus' ,5432 ,'faqdemo','demopass',
+(select du_pk from deft_users where logname='mst3k'));
+
+
+You'll have to create the faqdemo database, and populate it as
+well. See the documentation install.txt in the faqdemo directory which
+is part of the Deft distribution.
+
+We are well aware that database passwords are present in clear text in
+the Deft database. We recommend that you restrict read and write for
+the Deft database only to the Deft user and Postgres. The Deft and
+Postgres accounts and databases are super user accounts and should be
+treated with essentially the same care as root.
+
+
+
+-------------
+xinetd config
+
+xinetd is not necessary for a single tasking installation. If you will
+only be using deft_st.pl and machine.pl (and other state machine
+related scripts) we recommend that you skip this section.
+
+There are security concerns using xinetd. At a minimum, you need to
+block access to your Deft port from any machines outside your
+network. The current version of Deft will run arbitrary code as a user
+('mst3k' in the example below). Use iptables to do this blocking.
+
+We'll address security in an upcoming release.
+
+We strongly recommend that you run Deft as a non-root user. In this
+example the user is 'mst3k'. Put the following text between <cut> and
+</cut> into a file named 'deft' in your /etc/xinetd.d/ directory.
+
+<cut>
+service deft
+{
+	disable	= no
+	server 		= /home/mst3k/public_html/deft/deftd.pl 
+	log_type	= FILE /home/mst3k/public_html/deft/deft.log
+	user		= mst3k
+	port		= 9000
+	socket_type	= stream
+	protocol	= tcp
+	type            = UNLISTED
+	wait		= no
+	only_from	= 127.0.0.1 10.10.0.0/16
+}                                                                               
+</cut>
+
+disable		no will make this run. yes will disable Deft.
+
+server		This is the Deft daemon. This must be a full path to deftd.pl.
+
+log_type	This is for logging certain errors. Deft is not good at
+		handling compile-time errors, so we suggest that you
+		use perl -cw on all your Deft scripts. The first thing
+		Deft does when it starts running is to dup stderr to
+		syslog, so that all warnins and errors that would
+		normally go to stderr will go to
+		/var/log/messages. You'll almost certainly need to su
+		to root to read /var/log/messages.
+
+user		The userid of the user running deft. Xinetd will su to this user.
+
+port		We have chosen port 9000. This is probably not a universally good
+		choice, and will change in the future. If you were to
+		change this, you'd have to grep the Deft code and
+		change it there also.
+
+socket_type	This must be stream.
+
+protocol	This must be tcp.
+
+type		As far as we know Deft should be UNLISTED.
+
+wait		Deft is multithreaded by the xinetd meaning. Leave this set to no. I
+		think I tried yes and Deft didn't run.
+
+only_from	Use access control and only allow connections from
+		localhost, and any ip address on networks you trust.
+		Typically a 192.168 or 10.10 networks is local, and
+		the machines can probably be trusted. I also use an
+		entry in iptables to be sure. My guess is that
+		iptables is a stronger security measure than access
+		control xinetd. Both is better. 
+
+When you are done with /etc/xinetd.d/deft restart xinetd:
+
+/etc/rc.d/init.d/xinetd restart
+
+Check /var/log/messages for xinetd error messages.
+
+Verifying this section: Deft should run (in the next section). Each time a
+Deft script launches, there will be an entry in your deft.log. Errors
+will show up at the end of /var/log/messages.
+
+You can use the nc (netcat) utility to check port availablity. 
+
+/usr/bin/nc -w 1 -zv hostname 9000
+
+where 'hostname' is the name of a host you expect to be listening for
+Deft connections. 
+
+For example:
+
+/usr/bin/nc -w 1 -zv zeus 9000
+zeus [127.0.0.1] 9000 (?) open
+
+
+Note: if you telnet to the Deft port, a deft process will start and
+you must manually kill it. We strongly recommend that you use nc to
+diagnose problems. We include this telnet process only for the sake of
+completeness (well, this trick can be handy, but use with extreme care).
+
+It should be possible to telnet to a the port. Here is a session
+transcript. Note that to exit the telnet session you use control-]
+
+[mst3k@myhost deft]$ telnet localhost 9000
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+^]
+telnet> close
+Connection closed.
+[mst3k@myhost deft]$
+
+A rejected telnet connection means that xinetd is not running, not
+accepting connections on that port, or that iptables (your firewall)
+is blocking that port. By default, iptables accepts all connections
+from the localhost to the localhost on all ports.
+
+
+
+iptables
+--------
+
+My input chain is named 'rh-input' as determined from a line such as:
+-A INPUT -j rh-input
+
+I've modified my /etc/sysconfig/iptables with this line:
+
+-A rh-input -s 127.0.0.1 -p tcp -m tcp --dport 9000 -m state --state NEW -j ACCEPT
+
+Restart iptables after changes with the standard command (as root):
+/etc/rc.d/init.d/iptables restart
+
+If you suspect iptables is causing problems (connections are rejected,
+or simply never connect), temporarily disable iptables (as root):
+/etc/rc.d/init.d/iptables stop
+
+
+
+
+

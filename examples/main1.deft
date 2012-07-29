@@ -1,0 +1,7 @@
+main:
+{
+    read_tab_data("./demo.dat",$sequence,$make,$model,$displacement,$units);
+    dump_stream("main_1");
+    $model = ucfirst($model);
+    dump_stream("main_1.2");
+}

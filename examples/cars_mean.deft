@@ -1,0 +1,54 @@
+
+ main:
+{
+    read_tab_data("/home/demo/public_html/deft/demo.dat","sequence,make,model,displacement,units");
+
+    # convert displacement to liters
+    if ($units eq "cid")
+    {
+	$displacement = (16.39 * $displacement) / 1000;
+    }
+    else
+    {	
+	if ($units eq "cc")
+	{
+	    $displacement = ($displacement / 1000);
+	}
+    }
+    $original_units = $units;
+    $units = "cc";
+    $make = ucfirst($make);
+    $model = ucfirst($model);
+    if ($make =~ m/ford/i)
+    {
+	$made_in = "Made in America.";
+    }
+    else
+    {
+	if ($make =~ m/volkswagen|mercedes/i)
+	{
+	    $made_in = "Made in Germany.";
+	}
+    }
+    agg_simple("made_in")
+    {
+	$s_test = "this is a test string";
+	mean("displacement", "ave_displacement");
+	# do_mean();
+    }
+    dump_stream();
+}
+
+
+sub do_mean
+{
+    mean("displacement", "ave_displacement");
+}
+
+sub m_america
+{
+}
+
+sub m_germany
+{
+}

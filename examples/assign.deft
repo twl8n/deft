@@ -1,0 +1,13 @@
+
+
+# Test that the first line of code can be an assignment. This didn't
+# used to work due to bugs in how unwind dealt with an empty input
+# stream.
+
+main:
+{
+    $var = "i like pie";
+    $var = "i like cake";
+    dump_stream("one");
+
+}

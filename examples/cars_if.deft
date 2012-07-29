@@ -1,0 +1,87 @@
+ main:
+{
+    # Read in data for the rest of the tests.
+    read_tab_data("/home/twl/public_html/deft/demo.dat",$sequence,$make,$model,$displacement,$units);
+
+    # Simple test of if()
+    if (! $make)
+    {
+	$make = "you shouldn't see this";
+    }
+
+    if (! $make)
+    {
+	$make = "second if";
+    }
+    
+    # An if-else test
+    if ($make =~ m/ford/i)
+    {
+	$ford_flag = 1;
+    }
+    else
+    {
+	$ford_flag = 0;
+    }
+
+    # Create a new column, pass two columns to a Deft subroutine.
+    $made_in = "";
+    where_made($make,$made_in);
+
+    # Test a nested if-else if-else.
+    # Convert displacement to liters
+    if ($units eq "cid")
+    {
+	$displacement = (16.39 * $displacement) / 1000;
+    }
+    else
+    {
+	if ($units eq "cc")
+	{
+	    $displacement = ($displacement / 1000);
+	}
+	else
+	{
+	    if ($units eq "cup")
+	    {
+		$displacement = ($displacement * 0.236588237);
+	    }
+	}
+    }
+
+    # round off units
+    $displacement = sprintf("%5.2f", $displacement);
+
+    $original_units = $units;
+    $units = "liters";
+    $make = ucfirst($make);
+    $model = ucfirst($model);
+    dump_stream("main");
+}
+
+sub where_made ($make, $made_in)
+{
+    if ($make =~ m/ford/i)
+    {
+	# Call a sub just for grins.
+	m_america($made_in);
+    }
+
+    if ($make =~ m/datsun|mazda/)
+    {
+	$made_in = "Made in Japan.";
+    }
+
+    if ($make =~ m/mercedes|volkswagen/i)
+    {
+	$made_in = "Made in Germany.";
+	dump_stream("where_made_mb_vw");
+    }
+    dump_stream("where_made_end");
+}
+
+
+sub m_america($made_in)
+{
+    $made_in = "Made in America.";
+}

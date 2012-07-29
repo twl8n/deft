@@ -1,0 +1,15 @@
+main:
+{
+    # $newvar gets a string which looks like a regex line.
+    # This tests the parser's ability to distinguish quoted
+    # strings from real lines.
+
+    $newvar = "init s/stuff// $var";
+    $newvar =~ m/(ini)/;
+
+    # Normal Perl style regex bound vars don't work.
+    # $tvar is not guaranteed to contain "ini".
+    $tvar = $1;
+
+    dump_stream();
+}

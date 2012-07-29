@@ -1,0 +1,30 @@
+
+ main:
+{
+    keep("findme");
+    read_tab_data("/home/mst3k/deft/demo.dat","sequence,make,model,displacement,units");
+    convert();
+    printdata();
+    dump_stream();
+}
+
+
+sub convert
+{
+    #write_log("converting $displacement $units to liters");
+    # convert displacement to liters
+    if ($units eq "cid")
+    {
+	$displacement = (16.39 * $displacement) / 1000;
+    }
+    elsif ($units eq "cc")
+    {
+	$displacement = ($displacement / 1000);
+    }
+}
+sub printdata
+{
+    $make = ucfirst($make);
+    $model = ucfirst($model);
+    #write_log("$make $model displaces $displacement liters.");
+}

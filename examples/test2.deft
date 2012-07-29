@@ -1,0 +1,21 @@
+main:
+{
+    keep("findme,findme_encoded,_next_node");
+    #dump_stream();
+    #decode_findme();
+    $findme = CGI::unescape($findme);
+    if ($findme_encoded)
+    {
+	$findme = www_dequote($findme_encoded);
+    }
+    do_sql_simple("bug_pages","","select * from bug_faq where valid=1");
+    #default, fields to search, found records field
+    do_search("baja", "bf_pk,question,answer,keywords", "rank");
+    dcc("distinct_bf_pk", "bf_pk", ["rank >= 1"],["bf_pk,an"]);
+    #encode_findme();
+    #$findme_encoded = $findme;
+    $findme_encoded = www_quote($findme);
+
+    render("","Content-type: text/html\n\n","../faqmgr/draw_all.html", "");
+}
+

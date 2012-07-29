@@ -1,0 +1,6615 @@
+#
+# Caching version of opening a db connection
+# for the Deft system's internal use.
+# 
+sub system_dbh
+{
+    if (! exists($db_handles{deft}))
+    {
+	$db_handles{deft} = deft_db_connect();
+    }
+    return $db_handles{deft};
+}
+
+
+# In general do not call this sub directly!
+# Call system_dbh() instead.
+# 
+# This sub only exists to connect to the deft db
+# (config and state machine stuff).
+
+sub deft_db_connect
+{
+    my %vars = read_config(".config");
+    my $dbh = db_connect($vars{db_name},
+			 $vars{dbms},
+			 $vars{db_host},
+			 $vars{db_port},
+			 $vars{db_user},
+			 $vars{db_password});
+    if ($dbh->err())
+    {
+	die "ddc connect failed db_name:$vars{db_name}\n";
+    }
+    return $dbh;
+}
+
+
+
+
+sub read_config
+{
+    my $filename = $_[0]; # ".config";
+    my $temp;
+    my $key;
+    my $value;
+    my %vars;
+    # my $path = "./";
+
+    if (! open(OR, "< $::_d_path/$filename"))
+    {
+	my $pwd = `/bin/pwd`;
+	chomp($pwd);
+	write_log("pid $$ read_config can't open $::_d_path/$filename. pwd:$pwd\n");
+        exit();
+    }
+
+    my $line_number = 0; # inc. after read. human readable ones based numbering
+    while($temp = <OR>)
+    {
+        chomp($temp);
+	$line_number++;
+	if ($temp =~ m/^\#/ || length($temp) == 0)
+        {
+            next; # ignore comments
+        }
+        if ($temp =~ m/(.*?)=(.*)/)
+	{
+	    $key = $1;
+	    $value = $2;
+	    $key =~ s/^\s*(.*?)\s*$/$1/; # remove zero or more leading and/or trailing whitespace chars
+	    $value =~ s/^\s*(.*?)\s*$/$1/; # remove zero or more leading and/or trailing whitespace chars
+	    $vars{$key} = $value;
+	}
+	else
+	{
+	    die "Formatting error. Cannot read line $line_number of $filename\n";
+	}
+    }
+    return %vars;
+}
+
+sub db_connect
+{
+    my $db_name = $_[0];
+    my $dbms = $_[1];
+    my $db_host = $_[2];
+    my $db_port = $_[3];
+    my $db_user = $_[4];
+    my $db_password = $_[5];
+    my $dbargs = {AutoCommit => 0, PrintError => 1};
+    
+    my $connect_string  = "dbi:$dbms:dbname=$db_name;host=$db_host;port=$db_port";
+    my $dbh =  DBI->connect($connect_string,
+			    $db_user,
+			    $db_password,
+			    $dbargs);
+    if ($DBI::err)
+    {
+        die "Couldn't connect to $db_name\n";
+    }
+    
+    return $dbh;
+}
+
+
+
+
+# sc = stream code memnonic
+my $old_sc_if = '{ # sc_if 
+$::in_stream = pop_stack();
+next_stack(); # false
+next_stack(); # true
+';
+
+my $old_skip_if = '# skip_if 
+$::in_stream = pop_stack();
+if (stream_ok($::in_stream))
+{
+next_stack(); # false
+next_stack(); # true
+';
+
+my $old_skip_sc = '# skip_sc
+$::in_stream = pop_stack();
+if (stream_ok($::in_stream))
+{
+$::out_stream = next_stack();
+';
+
+my $old_end_of_true = '
+pop_to_union(); # end-of-true
+# removed right curly
+';
+
+my $old_end_of_false = 'pop_to_union(); # end-of-false
+union_streams();
+}';
+
+# end of an if statement that has only a true clause, and no false clause.
+my $old_eos_if = 'pop_to_union(); # end-of-statement-if
+union_streams();
+}';
+
+# stream top
+my $old_s_top = '# s_top
+$::in_stream = pop_stack();
+$::out_stream = next_stack();
+';
+
+
+
+sub old_join_streams
+{
+    my $orig = pop_stack();
+    my $dest = read_stack();
+    foreach my $hr (@{$streams[$orig]})
+    {
+	push(@{$streams[$dest]}, $hr);
+    }
+}
+
+
+
+
+
+
+	    push(@code, ['{', $wrap_join]);
+	    push(@block_stack, $wrap_join);
+
+
+	    if ($block_stack[$#block_stack] == $wrap_join)
+	    {
+		$line .= "# close, join stop";
+		$type = pop(@block_stack);
+		$type = $end_type[$type];
+		push(@code, [$line, $type]);
+	    }
+	    else
+	    {
+		$code[$#code][0] .= "# not join stop";
+	    }
+
+
+
+# my @context_stack;
+# my %context;
+
+# sub read_context
+# {
+#     return ($context{code}, $context{in}, $context{out}, $context{last});
+# }
+
+# sub set_context
+# {
+#     $context{code} = $_[0];
+#     $context{in} = $_[1];
+#     $context{out} = $_[2];
+#     $context{last} = $_[3];
+# }
+
+# sub inc_context
+# {
+#     if ($context{inc})
+#     {
+# 	$context{line}++;
+# 	$context{in} = $context{out};
+# 	$context{out} = next_stream();
+#     }
+# }
+
+# sub unshift_context
+# {
+#     my %tmp = %context;
+#     unshift(@context_stack, \%tmp); 
+# }
+
+# sub push_context
+# {
+#     my %tmp = %context;
+#     push(@context_stack, \%tmp); 
+# }
+
+# sub pop_context
+# {
+#     if ($#context_stack >= 0)
+#     {
+# 	%context = %{pop(@context_stack)};
+# 	return 1;
+#     }
+#     else
+#     {
+# 	return 0;
+#     }
+# }
+
+# sub dump_context
+# {
+#     for(my $xx=$#context_stack; $xx>=0; $xx--)
+#     {
+# 	my $cref = $context_stack[$xx];
+# 	my $part = substr($cref->{code}, 0, 10);
+# 	print "cs:$xx p:$part i:$cref->{in} o:$cref->{out} l:$cref->{last}\n";
+#     }
+# }
+
+
+
+# We want $Expr to be a Deft-only variable.
+sub keep_row
+{
+    my $Expr = $_[0];
+    my %urh
+    while (unwind(\%urh))
+    {
+	no strict;
+	restorevars();
+	if (eval "$Expr")
+	{
+	    rewind(\%urh);
+	}
+    }
+}
+
+
+sub gen_agg_simple_old
+{
+    my $item = $_[0];
+
+    my $agg_expression;
+    my $source;
+    if ($item =~ m/agg_simple\s*\((.*?)\)\s*(\{.*\})/s)
+    {
+	$agg_expression = $1;
+	$source = $2;
+	#$agg_expression = CGI::unescape($agg_expression);
+	$agg_expression = decode_string($agg_expression);
+    }
+    else
+    {
+	print "Syntax error, gen_agg_simple() for:\n$item\n";
+	exit(1);
+    }
+
+    my $the_code = compile_deft("agg_simple:$source");
+
+    # Noah uses // in split as a reminder that the first arg is a regex.
+    # Crude way to remove "" around the agg_expression
+
+    $agg_expression =~ s/\"(.*)\"/$1/;
+    my @key_list = split(/,/ , $agg_expression);
+    my $key_code = "(";
+    my $tween = "";
+    foreach my $item (@key_list)
+    {
+	$key_code .= "$tween\"$item\"";
+	$tween = ",";
+    }
+    $key_code .= ")";
+
+    my $temp = 'my %unique;
+my $pop_count = 0;
+my @key_list = $key_code;
+# Did this ever work without a "$::in_stream = pop_stack();" here?
+# Maybe not: this is gen_agg_simple_old()
+while(unwind())
+ {
+  $key = slice_key(\@key_list);
+  if (! exists($unique{$key}))
+  {
+    my $new_in = next_stream();
+    $unique{$key} = $new_in;
+    set_context("", $new_in, $prev_out, "");
+    push_context();
+    $pop_count++;
+  }
+  $::out_stream = $unique{$key};
+  rewind();
+ }
+   $the_code
+';
+
+    $temp =~ s/\$the_code/$the_code/g;
+    $temp =~ s/\$key_code/$key_code/;
+    # $temp =~ s/\n/\n    /sg;
+    return "$temp";
+}
+
+# This MUST NEVER return undef.
+# This sub must only return zero or 1.
+# Other code depends on deft scripts leaving _return undef,
+# which is TRUE since the deft script ran normally.
+# If you don't like it, rewrite the code.
+#
+# Note that the deft func keep() causes vars to instantiate
+# with undef values if they weren't in the stream.
+# Perhaps that is a bug.
+
+sub return_col
+{
+    my $which_col = $_[0];
+    while(unwind())
+    {
+	#
+	# Must have at least 1 record to return true.
+	#
+	if (get_eenv($which_col))
+	{
+	    set_eenv("_return", 1);
+	}
+	else
+	{
+	    set_eenv("_return", 0);
+	}
+	rewind();
+    }
+    if (! get_eenv("_return"))
+    {
+	set_eenv("_return", 0);
+    }
+}
+
+sub return_true
+{
+    while(unwind())
+    {
+	set_eenv("_return", 1);
+	rewind();
+    }
+    set_eenv("_return", 1);
+}
+
+sub return_false
+{
+    while(unwind())
+    {
+	set_eenv("_return", 0);
+	rewind();
+    }
+    set_eenv("_return", 0);
+}
+
+
+# Nicer way to do some global flags.
+# single_task, last_task etc.
+
+my %dflags; 
+
+sub get_flag
+{
+    my $key = $_[0];
+    return $dflags{$key};
+}
+
+sub set_flag
+{
+    my $key = $_[0];
+    $dflags{$key} = 1;
+}
+
+sub clear_flag
+{
+    my $key = $_[0];
+    $dflags{$key} = 0;
+}
+
+
+sub keep_clean
+{
+    die "common_lib.pl:keep_clean() deprecated\n";
+    my $save_str = $_[0];
+    $save_str =~ s/\s+//g; # remove whitespace
+    my @save_list = split(',', $save_str);
+
+    while(unwind())
+    {
+        keep_core(\@save_list);
+        my @keys = sys_keys_eenv();
+	my $key = slice_key(\@keys);
+	my %hash;
+	if (!(exists($hash{$key}))) 
+	{
+	    rewind();
+	}
+	$hash{$key} = 1;
+    }
+    return ;
+}
+
+sub row_number
+{
+    my $sort_col = $_[0];
+    my @recs;
+    my %order;
+    my %urh;
+    while(unwind(\%urh))
+    {
+	push(@recs, get_eenv_ref());
+	#$rec{get_eenv($sort_col)} = 
+    }
+    
+
+}
+
+# An unused table oriented login sub
+# This is not in %deft_func.
+sub table_login
+{
+    my $var = $_[0]; # better be a string with a variable name in it
+    
+    # Someday the login could be more complex,
+    # i.e. we start using a real session.
+
+    my $login = "";
+
+    if (exists($ENV{REMOTE_USER}))
+    {
+        $login = $ENV{REMOTE_USER};
+    }
+    else
+    {
+	$login = `/usr/bin/id -un`;
+	chomp($login);
+    }
+
+    my $run_once = 1;
+    while(unwind() || $run_once)
+    {
+	$run_once = 0;
+	
+	set_eenv($var, $login);
+
+	rewind();
+    }
+}
+
+sub if_col
+{
+    my $col = $_[0];
+    my $sub_to_call = $_[1];
+    
+    (my $subname,
+     my $line,
+     my $in,
+     my $out,
+     my $last) = read_context();
+    push_context();
+
+    #
+    # Our last is context's out. Remember, inc_context runs
+    # when we return.
+    # Our out will be the called sub's in, so we make a new out stream.
+    # 
+
+    $last = $out;
+    $out = next_stream();
+    while(unwind())
+    {
+	if (get_eenv($col))
+	{
+	    $::out_stream = $out;
+	}
+	else
+	{
+	    $::out_stream = $last;
+	}
+	rewind();
+    }
+
+    # 
+    # Set up the context for the called sub. inc_context will not run.
+    # In stream is where we've been rewinding to, and the last
+    # of the sub is the same as the last we rewound to above.
+    # 
+
+    set_context($sub_to_call,	# sub name
+		0,		# line index
+		$out,		# in
+		next_stream(),	# out
+		$last,		# last
+		0);		# inc
+}
+# Create new input stream for the branch.
+# spawn_processes always returns whatever the $context{in} was
+# set to when it was called. The return value is partly convenience
+# and partly to illuminate the programmer's intention.
+
+sub if_simple
+{
+    my $expr = $_[0];
+    my $sub_to_call = $_[1];
+
+    (my $dummy_code,
+     my $in,
+     my $false_out,
+     my $last) = read_context();
+
+    set_context($dummy_code,
+		next_stream(),
+		$false_out,
+		$last);
+    
+    my $true_in = ''; # this infinitly loops on recursion
+                      # = spawn_processes($::exec->{deft}{$sub_to_call});
+    
+    while(unwind())
+    {
+	no strict;
+	restorevars();
+	if (eval("$expr"))
+	{
+	    unless ($true_in) 
+	    {
+		$true_in = spawn_processes($::exec->{deft}{$sub_to_call});
+	    }
+	    $::out_stream = $true_in;
+	}
+	else
+	{
+	    $::out_stream = $false_out;
+	}
+	rewind();
+    }
+}
+
+# Creates N sub-streams each with the same eventual output stream
+# are unioned (just shoved back together).
+# (I think there is only one output stream which is how the union
+# happens) . The number N is the same as count(distinct(col_list))
+# In Tom-Noah Deft parlance, we'd call this an n-way lambda.
+
+sub agg_simple
+{
+    my $col_list = $_[0];
+    my $sub_to_call = $_[1];
+
+    (my $dummy,
+     my $in,
+     my $out,
+     my $last) = read_context();
+
+    my %unique;
+    my $key_str = $col_list;
+    $key_str =~ s/,/\$/g;
+    $key_str = "\"\$$key_str\"";
+
+    while(unwind())
+    {
+	no strict;
+	restorevars();
+	
+	my $key = undef;
+	$key = eval($key_str);
+	if (! exists($unique{$key}))
+	{
+	    set_context("",	
+			next_stream(), # in
+			$out,	       # out
+			$last);	       # last
+	    my $new_in = spawn_processes($::exec->{deft}{$sub_to_call});
+	    $unique{$key} = $new_in;
+	}
+	$::out_stream = $unique{$key};
+	rewind();
+    }
+}
+
+# make part price
+# sum on price by make
+# maybe the arg order should be different?
+# distinct_on("sum", ["make"], ["price"]);
+
+sub distinct_on_old
+{
+    my $op_code = $_[0];
+    my @agg_vars = @{$_[1]};
+    my @dis_vars = @{$_[2]};
+
+    my $uflag = 0; # did we get data on previous unwind?
+    my %row_val;
+    $op_code =~ s/count/0/i;
+    $op_code =~ s/sum/1/i;
+    $op_code =~ s/max/2/i;
+    $op_code =~ s/min/3/i;
+
+    my @rows;
+    while(unwind() && restorevars() )
+    {
+	my %local_eenv = %{get_ref_eenv()};
+	push(@rows, \%local_eenv);
+	my $key = slice_key(\@agg_vars);
+	foreach my $dvar (@dis_vars)
+	{
+	    if ($op_code == 0) # count
+	    {
+		$row_val{$key}{$dvar}++;
+	    }
+	    elsif ($op_code == 1) #sum
+	    {
+		$row_val{$key}{$dvar} += get_eenv($dvar);
+	    }
+	    elsif ($op_code == 3) # max
+	    {
+		my $val = get_eenv($dvar);
+		my @temp = sort [$row_val{$key}{values}{$dvar}, $val];
+		$row_val{$key}{$dvar} = pop(@temp);
+	    }
+	    elsif ($op_code == 4) # min
+	    {
+		my $val = get_eenv($dvar);
+		my @temp = sort [$row_val{$key}{$dvar}, $val];
+		$row_val{$key}{$dvar} = shift(@temp);
+	    }
+	}
+    }
+    foreach my $hash (@rows) # (@{$row_val{$key}{row}})
+    {
+	set_ref_eenv($hash);
+	my $key = slice_key(\@agg_vars);
+	foreach my $col (keys(%{$row_val{$key}}))
+	{
+	    set_eenv($col, $row_val{$key}{$col});
+	}
+	rewind(\%urh);
+    }
+}
+
+
+# Note 4
+# We have to unwind to get the template name.
+# We have to init the template before we can emit.
+# We must init @order before emitting.
+# We only get template name and output file name on the first
+# unwind so we need a flag.
+# r_emit() has a special case for first iteration,
+# so pass in a first iteration flag.
+
+# @order is a local file global.
+# dec 10 2005 force $template_name to have full path.
+
+
+sub old_render
+{
+    my $file_name = $_[0];        # name of the variable that has the output file name.
+    #my $fn_var = $_[0];        # name of the variable that has the output file name.
+    my $prefix = $_[1];        # header to send to output (i.e. http header)
+    my $template_name = $_[2]; # template file name
+    my $tn_var = $_[3];        # variable with template file name
+    my $use_db_flag = 1;
+
+    # See Note 4 above.
+
+    my $fn_var;
+    my %nest;
+    my @order;
+
+    my $first_flag = 1;
+    while(unwind())
+    {
+	if ($first_flag)
+	{
+	    $file_name = get_eenv("$fn_var"); 
+	    if ($tn_var)
+	    {
+		$template_name = get_eenv($tn_var);
+	    }
+	    $template_name = abs_path($template_name);
+	    init_template($template_name, $use_db_flag);
+	    @order = sort keys(%nest); 
+	    #use Data::Dumper;
+	    #print Dumper %nest;
+	    r_emit($first_flag);
+	    $first_flag = 0;
+	}
+	else
+	{
+	    r_emit($first_flag);
+	}
+	rewind();
+    }
+    die "render needs work\n";
+    my $final_output = r_sort_spew();
+
+    # If column $fn_var is empty or contains "-", render to stdout.
+    # Else render to the file named in $fn_var.
+
+    if (! $file_name || $file_name eq '-')
+    {
+	print "$prefix$final_output\n";
+    }
+    else
+    {
+	if (open(RENDER_OUT, ">", "$file_name"))
+	{
+	    print RENDER_OUT "$prefix$final_output";
+	    close(RENDER_OUT);
+	}
+	else
+	{
+	    WriteError("render: can't open $file_name for output. FN:$fn_var TN:$tn_var Template:$template_name");
+	    exit(1);
+	}
+    }
+}
+
+
+
+# 	    foreach my $key (keys(%{$urh->{old_eenv}}))
+# 	    {
+# 		print "rw oee $key:$urh->{old_eenv}->{$key}\n";
+# 	    }
+			     
+
+
+
+    my @uk_ref = sys_keys_eenv();
+    my $r_key = slice_key(\@uk_ref);
+
+    if (! exists($urh->{key_cache}{$r_key}))
+    {
+	print "pe rewinding:$r_key\n";
+	push(@{$streams[$out_stream]}, get_ref_eenv());
+	$urh->{key_cache}{$r_key} = 1;
+    }
+    else
+    {
+	print "not pe rewinding:$r_key\n";
+    }
+
+    # See note rw2, rw3 above.
+    # push(@{$streams[$out_stream]}, get_ref_eenv());
+    postusevars(); # Gack.
+
+
+
+#  		    foreach my $key (keys(%{$urh->{old_eenv}}))
+# 		    {
+# 			# emacs doesn't like this line:
+# 			# my $tval = ${$urh->{old_eenv}}{$key};
+# 			my $val = d_get_eenv($key); # local_eenv() uses sys keys, not user keys.
+# 			print "old_eenv $key:$val tv:$tval\n";
+# 		    }
+
+
+# view list
+my @view_list = (%s);
+my $view_handle;
+
+while(($view_handle = unwind($urh, \@view_list)) || $run_once)
+
+
+
+
+# sub init_ur
+# {
+#     my %ur;
+
+#     my %mem_cache; # cache of processed records to shortcut processing
+#     my @view_list; # list of vars used in the current expression
+    
+#     $ur{mem_cache} = \%mem_cache;
+#     $ur{view_list} = \@view_list;
+#     $ur{view_key} = ""; # key for this record, based on view_list
+#     $ur{old_eenv} = ""; # a reference to the old_eenv
+
+#     return \%ur;
+# }
+
+
+
+# Figure out a local col name or arg string 
+# Include the leading $ on the returned variable.
+# Arg vars become $_[0]
+# Local var $foo becomes "local_foo"
+
+sub local_col
+{
+    my $var = $_[0];
+    my $curr_sub = $_[1];
+
+    my $proto_ref = undef;
+
+    # print "pref for $curr_sub\n";
+    # key is var name, value is arg position, zero based.
+    # No else, simply fall through to the final return 
+    # if both criteria are not met.
+    # This could be written with a single if containing two bool clauses
+    # but that would be hard to read, and include an icky pointer dereference.
+
+    if (exists($args{$curr_sub}))
+    {
+	$proto_ref  = $args{$curr_sub};
+	if (exists($proto_ref->{$var}))
+	{
+	    return '$_[' . $proto_ref->{$var} . ']';
+	}
+    }
+
+    return "\"$var\""; # surround by "", no leading $ 
+}
+
+
+
+# 2007-01-21 twl commented out when I implemented col aliases
+#Usage:
+# new_var_eenv(col)
+#sub new_var_eenv
+#{
+#    $eenv{$_[0]} = '';
+#}
+
+
+
+
+# from todo.txt 
+# Don't do this.
+main(foo, bar)
+{
+  # foo[1] = 1, bar[1] = 2 push 1,2,2(n)
+  cheese(foo); # pass in 1
+  mogrify(bar); # 2
+}
+sub cheese(foo)
+{
+  # foo[2] = 1, bar[2] = 3 push 1,3,2(n)
+  foo++; # foo is still 1
+  read(bar); 3
+  toast(foo,bar); # pass 1, 3
+  # for pop() {  pop() }
+}
+
+sub toast(faa,bez)
+{
+  # faa[3] = 1, bez[3] = 3 bug[3] = 4 push 1,3,4,3(n)
+  faa++; # faa is 1
+  read(bez); bez is 3
+  munge(bug); # bug is 4
+  # for pop() {  pop() }
+}
+
+
+
+sub inc_depth
+{
+    push(@alias_stack, $alias_ref); 
+    my $sub_name = shift(@_);
+    push(@sub_stack, $sub_name); # tricky games with @_
+
+    my %new_alias;
+    # Copy any args into the new alias
+    while(@_)
+    {
+	my $proto = shift(@_);
+	my $arg = shift(@_);
+	$new_alias{$arg} = $alias_ref->{$proto};
+    }
+
+    $alias_ref = \%new_alias;
+    $depth++;
+}
+
+
+sub init_ur
+{
+    my %ur;
+
+    my %mem_cache; # cache of processed records to shortcut processing
+    my @view_list; # list of vars used in the current expression
+    
+    $ur{mem_cache} = \%mem_cache;
+    $ur{view_list} = \@view_list;
+    $ur{view_key} = ""; # key for this record, based on view_list
+    $ur{old_eenv} = ""; # a reference to the old_eenv
+
+    return \%ur;
+}
+
+# Clean up from rewind(). See rewind below.
+sub postusevars
+{
+    foreach my $var (keys_eenv())
+    {
+ 	no strict;
+ 	$$var = undef;
+    }
+}
+
+# rw2: Allowing different columns in records is evil [later note:
+# perhaps not it shouldn't cause trouble, although it only happens
+# with a union, and union is very rare].  It becomes necessary to
+# un-restorevars after rewind since the next record may have different
+# columns and may not therefore be able to undef existing
+# columns. Leaving the columns around gives the impression that this
+# record has the same value for non-existant columns as the previous
+# record.
+
+# rw3: Compiled code doesn't use restorevars() so we don't need the stupid
+# cleaning code. So, once all uses of restorevars() are followed by
+# postusevars(), rewind() can be simplified.
+
+# rw4: $old_eenv will not exist if the input stream has no records.
+# This will (often?) be the case for the first line of code. 
+# After that, it will be fairly unusual since this case would require
+# deleting all the records. 
+
+# @streams is list of lists of hash references
+# $stream[x] is a list of the records (hash refs) in stream x.
+
+# See common_lib.pl:patch_eenv()
+# We need an old-style simple rewind to call from patch_eenv()
+# after it has patched a record.
+
+sub pe_rewind 
+{
+    # $_[0] is passed in output stream.
+    # See note rw2, rw3 above.
+    push(@{$streams[$_[0]]}, get_ref_eenv());
+    postusevars(); # Gack.
+}
+
+# See note rw2, rw3 above.
+sub rewind
+{
+    my $urh = $_[0];
+
+    my $mc_ref = $urh->{mem_cache};
+    my $view_key = $urh->{view_key};
+    my $old_eenv = $urh->{old_eenv};
+
+    $mc_ref->{$view_key}[1] = $::out_stream;
+
+    my $new_eenv = get_ref_eenv();
+    if ($old_eenv)
+    {
+	push(@{ $mc_ref->{$view_key}[0] }, diff_eenv($old_eenv, $new_eenv));
+    }
+
+    push(@{$streams[$::out_stream]}, $new_eenv);
+    postusevars(); 
+}
+
+
+# See comments in docs/implementation.txt
+# If we don't find our view key in the mem cache, then
+# peform as always and simply unwind.
+# However, as long as we hit the mem cache, keep unwinding
+# and calling patch_eenv() which rewinds.
+
+sub unwind
+{
+    my $urh = $_[0];
+
+    my $rval = 0;
+    my $eeref;
+
+    my $go_flag = 1;
+    while($go_flag)
+    {
+ 	$rval = 0;
+ 	if ($eeref = pop(@{$streams[$::in_stream]}))
+ 	{
+ 	    set_ref_eenv($eeref);
+ 	    $rval = 1;
+	    
+	    my $view_key = slice_key($urh->{view_list});
+	    $urh->{view_key} = $view_key;
+	    my $mc_ref = $urh->{mem_cache};
+	    if (exists($mc_ref->{$view_key}))
+	    {
+		patch_eenv($mc_ref->{$view_key}[1],
+			   $mc_ref->{$view_key}[0]);
+	    }
+	    else
+	    {
+		$urh->{old_eenv} = get_ref_eenv();
+		$go_flag = 0;
+	    }
+	}
+	else
+	{
+	    $go_flag = 0;
+	}
+    }
+    return $rval;
+}
+
+
+
+my $gs_fmt = '$run_once = 1;
+{
+my $view_key;
+my %%mem_cache;
+my %%stream_cache;
+my $old_eenv;
+# view list
+%s
+while (unwind(\$view_key, \%mem_cache, \%%stream_cache, \$old_eenv, \@view) || $run_once)
+{
+$run_once = 0;
+# get cols
+%s
+# code
+%s
+# set cols
+%s
+rewind(\$view_key, \%mem_cache, \%%stream_cache, $old_eenv);
+}
+}
+';
+
+
+
+
+my $param_fmt = '{ # block so that %mem_cache is local
+my $run_once = 1;
+my %mem_cache;
+while (unwind() || $run_once)
+{
+$run_once = 0;
+# view list
+%s
+my $view_key = join(\' ,\', @{slice_eenv(\@view)});
+if (exists($mem_cache{$view_key}))
+{
+patch_eenv(@{ $mem_cache{$view_key} });
+}
+else
+{
+# get_eenv for args and local cols
+%s
+my $old_ref = local_eenv(@view);
+# the code
+%s
+# set_eenv for args and local cols
+%s
+my $new_ref = local_eenv(@view);
+push(@{ $mem_cache{$view_key} }, diff_eenv($old_ref, $new_ref));
+rewind();
+}
+}
+}';
+
+my $param_fmt = '{ # block so that %mem_cache is local
+my $run_once = 1;
+my %mem_cache;
+while (unwind() || $run_once)
+{
+$run_once = 0;
+# view list
+%s
+my $view_key = join(\' ,\', @{slice_eenv(\@view)});
+if (exists($mem_cache{$view_key}))
+{
+patch_eenv(@{ $mem_cache{$view_key} });
+}
+else
+{
+# get_eenv for args and local cols
+%s
+my $old_ref = local_eenv(@view);
+# the code
+%s
+# set_eenv for args and local cols
+%s
+my $new_ref = local_eenv(@view);
+push(@{ $mem_cache{$view_key} }, diff_eenv($old_ref, $new_ref));
+rewind();
+}
+}
+}';
+
+
+
+	    else
+	    {
+		$gen_cond .= sprintf($if_fmt, $get_local, $if_expression, $set_local);
+	    }
+
+
+my $if_param_fmt = '{ # block to make %mem_cache local
+my $run_once = 1;
+    my %mem_cache_true;
+    my %mem_cache_false;
+    my %%bool_cache;
+    while(unwind() || $run_once)
+    {
+	$run_once = 0;
+# view list
+	%s
+# get_eenv for args and locals
+	%s
+	my $view_key = join(\' ,\', @{slice_eenv(\@view)});
+	if (exists($bool_cache{$view_key}))
+	{
+	    if($bool_cache{$view_key})
+	    {
+		$::out_stream = read_stack(0);
+		patch_eenv(@{ $mem_cache_true{$view_key} });
+	    }
+	    else
+	    {
+		$::out_stream = read_stack(1);
+		patch_eenv(@{ $mem_cache_false{$view_key} });
+	    }
+	}
+	else
+	{
+	    my $old_ref = local_eenv(@view);
+	    if (%s)
+	    {
+		$::out_stream = read_stack(0);
+		$bool_cache{$view_key} = 1;
+		my $new_ref = local_eenv(@view);
+		push(@{ $mem_cache_true{$view_key} }, diff_eenv($old_ref, $new_ref));
+	    }
+	    else
+	    {
+		$::out_stream = read_stack(1);
+		$bool_cache{$view_key} = 0;
+		my $new_ref = local_eenv(@view);
+		push(@{ $mem_cache_false{$view_key} }, diff_eenv($old_ref, $new_ref));
+	    }
+# set_eenv for args and locals
+	    %s
+	    rewind();
+	} # end else if (exists
+    } # end while
+} # end anon block';
+
+
+
+
+    # unused, again.
+    # gen_if_else(\@code);
+    # dump_code(\@code, 1);
+    # unused
+    # gen_else(\@code);
+    # dump_code(\@code, 1);
+    # See gen_if, we apparently don't need gen_if_stop.
+    # gen_if_stop(\@code);
+    #dump_code(\@code, 1);
+
+
+
+# sub gen_top
+# {
+#     my $code_ref = $_[0];
+#     my $depth = 0;
+#     for(my $xx = 0; $xx < $#{$code_ref}; $xx++)
+#     {
+# 	if ($code_ref->[$xx][1] == $wrap_top)
+# 	{
+# 	    $code_ref->[$xx][0] .= ";\n";
+# 	}
+#     }
+# }
+
+
+
+sub xdispatch
+{
+    no strict; # Since $_d_code_refs is a file global elsewhere.
+    if (exists($_d_code_refs{$_[0]}))
+    {
+	&{$_d_code_refs{$_[0]}};
+    }
+    else
+    {
+	write_log("Error: dispatch, on Deft sub \"$_d_code_refs{$_[0]}\"");
+	die "Error: cannot dispatch to non-existant Deft subroutine \"$_d_code_refs{$_[0]}\"\n";
+    }
+}
+
+
+# We don't read templates from disk.
+
+sub load
+{
+    my $file_name = $_[0];
+    my $frozen;
+    
+    my @stat_array = stat($file_name);
+    my $size = $stat_array[7];
+    if (! open(IN, "< $file_name]"))
+    {
+	WriteError("runt->compile: can't open $file_name");
+	exit(1);
+    }
+    sysread(IN, $frozen, $size);
+    close(IN);
+
+    my $href = thaw($frozen);
+    return $href;
+}
+
+
+
+
+
+# Badly named because we don't have sort_vals.
+sub r_update_sort_vals
+{
+    my $nestkey = $_[0];
+    #
+    # $csort[0] col spec for rank_col 3 (if ,5 that is in the next element of _sort
+    # [1] atdn may have code to eval  atdn
+    # [2] aggregation operation thingy. could be a subroutine reference. null for the normal case. null
+    #
+    foreach my $cs_index (0 ..$#{$::nest{$nestkey}{_sort}})
+    {
+	if ($::nest{$nestkey}{_sort}[$cs_index][2])
+	{
+	    # eval aggregator
+	}
+	# if no agg, then we're done with this iteration, so don't even think about putting something here.
+    }
+}
+
+
+# Not used.
+# if_stop includes ends of if and else blocks
+# sub gen_if_stop
+# {
+#     my $code_ref = $_[0];
+#     for(my $xx = 0; $xx <= $#{$code_ref}; $xx++)
+#     {
+# 	if ($code_ref->[$xx][1] == $wrap_if_stop)
+# 	{
+# 	    $code_ref->[$xx][0] .= "\n}";
+# 	}
+#     }
+# }
+
+
+# my $end_if_stop = '# end-of-true
+# my $temp = $prev[$#prev];
+# $prev[$#prev] = $prev[$#prev-1];
+# $prev[$#prev-1] = $temp;
+# # end-of-false
+# my $orig = pop_stack();
+# my $dest = $prev[$#prev];
+# foreach my $hr (@{$streams[$orig]})
+# {
+# push(@{$streams[$dest]}, $hr);
+# }
+# ';
+
+
+
+# Called from load_states.pl
+# Very similar to getmain() below. Consider joining these, or creating a core
+# subroutine.
+#
+# This parses Deft source, putting the body of 
+# each sub into an array element, and returning the array.
+
+sub subs_to_list
+{
+    my $all = $_[0];
+    my %state_hash;
+    
+    my @tmplist;
+    my @lines = split('\n', $all);
+    
+    my $flag;
+    my $xx = 0;
+
+    my $which_sub;
+    my $tmp;
+    #
+    # Use @lines, not $#lines
+    #
+    while(@lines)
+    {
+	my $inner_complete = 1;
+	undef(@tmplist);
+	$tmp = shift(@lines);
+	#
+	# Read  lines until a sub start, by not setting $inner_complete to zero
+	# until we're ready to go inside a subroutine.
+	#
+	if ($tmp =~ s/.*?(sub\s+.*)//)
+	{
+	    $which_sub = $1;
+	    $inner_complete = 0;
+	    # print "w:$which_sub\n";
+	}
+	$flag = 1;
+	# 2004-08-26
+	# sub name
+	# is not part of the sub. Only save the body.
+	# push(@tmplist, $which_sub);
+	my $name = $which_sub;
+	while(!$inner_complete)
+	{
+	    $tmp = shift(@lines);
+	    #
+	    # Find # that don't have $ before them.
+	    # Remove all comments, but not all $#vars.
+	    # ?<! zero width, backwards, negative assertion.
+	    #
+	    $tmp =~ s/(?<!\$)\#.*//;
+	    if ($flag) # || ($tmp =~ m/$which_sub/))
+	    {
+		while ($tmp =~ m/\{/g)
+		{
+		    $xx++;
+		}
+		# $flag = 1;
+		if (!$xx)
+		{
+		    next;
+		}
+  		if ($flag==1 && $xx==1)
+  		{
+  		    $tmp =~ s/\{//;
+  		    $flag = 2;
+  		}
+		while ($tmp =~ m/\}/g)
+		{
+		    $xx--;
+		}
+ 		if ($flag!=0 && $xx==0)
+ 		{
+ 		    $tmp =~ s/\}//;
+ 		    $flag = 0;
+ 		}
+		if ($tmp =~ m/\S/)
+		{
+		    push(@tmplist, $tmp);
+		}		
+		if (!$flag)
+		{
+		    my $full_sub = join("\n", @tmplist);
+		    # my $name = $1;
+		    if (!exists($state_hash{$name}))
+		    {
+			$state_hash{$name} = $full_sub;
+			print "n:$name\nf:$full_sub\n\n";
+			$inner_complete = 1;
+		    }
+		    else
+		    {
+			die "Duplicate sub name $name for $full_sub\n";
+		    }
+		}
+	    }
+	}
+    }
+    return \%state_hash;
+}
+
+
+# called from load_states_perl.pl
+sub state_code_to_db_perl
+{
+    my %code_hash = %{$_[0]};
+    my $dbh = deft_db_connect();
+    foreach my $code_name (keys(%code_hash))
+    {
+	#
+	# If the code doesn't exist, code_pk will probably come back undef
+	#
+	my $code_pk = sql_code_exists($dbh, $code_name);
+	if ($code_pk)
+	{
+	    if ($code_pk == 1)
+	    {
+		# print "n:$code_name c:$code_hash{$code_name}\n";
+	    }
+	    sql_update_code($dbh, $code_pk, $code_hash{$code_name});
+	}
+	else
+	{
+	    sql_insert_code($dbh, $code_name, $code_hash{$code_name});
+	}
+    }
+    $dbh->commit();
+    # This one is ok. It's a deft db connection.
+    $dbh->disconnect();
+}
+
+
+sub insert_cref
+{
+    my $code_ref = $_[0];
+    my $insert_after = $_[1];
+    my $line = $_[2];
+    my $wrap_type = $_[3];
+
+    my $max = $#{$code_ref}+1;
+    for(my $xx = $max; $xx>=0; $xx--)
+    {
+	if ($xx == $insert_after+1)
+	{
+	    $code_ref->[$xx] = [$line, $wrap_type];
+	    return;
+	}
+	else
+	{
+	    $code_ref->[$xx] = $code_ref->[$xx-1];
+	}
+    }
+}
+
+# The old get_block has been moved to code_archive.pl.
+# Must hit a { to set have_hit.
+
+sub get_block
+{
+    my $list_ref = $_[0];
+    my $have_hit = 0;
+    my $depth = 0;
+    my $xx;
+
+    for($xx = 0; $xx<=$#{$list_ref} && ! ($have_hit==1 && $depth==0); $xx++)
+    {
+	if ($list_ref->[$xx] eq '{')
+	{
+	    $depth++;
+	    $have_hit = 1;
+	}
+	elsif ($list_ref->[$xx] eq '}')
+	{
+	    $depth--;
+	}
+	# print "$xx $depth $list_ref->[$xx]\n";
+    }
+
+    my @block = splice(@{$list_ref},0,$xx);
+    if (0)
+    {
+	print "hh:$have_hit d:$depth\n";
+	foreach my $tok (@block)
+	{
+	    print "$tok\n";
+	}
+	# exit();
+    }
+    return @block;
+}
+
+
+
+#st_lib.pl
+#
+# There is no point to call_simple() 
+# since call_deft() does this, and is far simpler.
+# 
+
+my $cs_count = 0;
+sub call_simple
+{
+    my $sub_name = $_[0];
+    my $arg_list_str = $_[1];
+    my $ret_list_str = $_[2];
+
+    $cs_count++;
+    if ($cs_count > 10)
+    {
+	die "cs count exceeded\n";
+    }
+
+    (my $dummy,
+     my $in,
+     my $out,
+     my $last) = read_context();
+
+    #
+    # Push a rewinder? No. We run into big problems if the
+    # whole stream isn't rewound to the top. It is possible that the sub
+    # will create or destroy rows or cols. Wyeing that new table back
+    # with the current table would be tricky.
+    #
+
+    #
+    # spawn sub. Any Perl will be wrapped.
+    # Rewind to top. Bottom spawned proc should rewind to our out (last).
+    # 
+
+    write_log("in:$in out:$out spawning:$sub_name");
+
+    # new process family needs to write to our output stream.
+    my $new_top_in = next_stream();
+    set_context("",
+		$new_top_in,
+		$out,
+		$out);
+    write_log("nti:$new_top_in (orig)in:$in out:$out spawning:$sub_name");
+
+    my $top_in = spawn_processes($::exec->{$sub_name});
+    $::out_stream = $top_in;
+    $::in_stream = $in;
+    write_log("cs> i:$::in_stream o:$::out_stream");
+    while(unwind())
+    {
+	#set_eenv("_arg_cols", $arg_list_str);
+	#set_eenv("_ret_cols", $ret_list_str);
+	rewind();
+    }
+
+    write_log("cs finishes>");
+    #
+    # We have to call an accessor function to retrieve the param cols.
+    # in the deft source: params can't be string list.
+    # in the deft source: params can't be $_. 
+    # in the deft source: use $var = deft_get(n); for params?
+    # in the deft source: use deft_put("rewind list") for list to rewind.
+    # rewind original values, with "rewind list" columns replaced.
+    # see call_simple.txt
+    # (No) Make stream with arg_list vars.
+    # (No) Push_context for unwinder.
+    # return (where eval loop will pop_context, etc.)
+    #
+}
+# 2005-02-28
+sub spawn_processes
+{
+    my $sub_name = $_[0];
+
+    (my $dbh,
+     my $host,
+     my $port,
+     my $st_in,
+     my $code_id,
+     my $last_out,
+     my $fid) =  read_context();
+
+    my $exec = sql_get_code($dbh, $code_id);
+
+    my %calling;
+    $calling{coderef} = pop(@{$exec->{$sub_name}});
+
+    my $st_out = $st_in; # necessary if there is only one line of code.
+    foreach my $an_code (@{$exec->{$sub_name}})
+    {
+	$st_out = sql_new_stream_id($dbh); # my-out, not parent
+	sql_new_ancestor($dbh, $st_out, $st_in, "$an_code", $fid);
+	$dbh->commit(); 	# commit before starting the new process with open_peer().
+
+	#
+	# Remember, $st_in was the parent's-out.
+	#
+	$host = sql_next_host($dbh, $host);
+	my $peer_handle = open_peer($host, $port);
+	print $peer_handle "$st_in,$code_id\n"; 
+	close_peer($peer_handle);
+	$st_in = $st_out;     	# next in is my out
+    }
+    $st_in = $st_out;     	# next in is my out
+    $st_out = $last_out;
+    
+    #
+    # no matter what, $st_out is already in @st_list, so I commented it out.
+    # push(@st_list, $st_out);
+    # coderef is "" because $calling{coderef} will be used.
+    # Create an ancestor for ourself. We keep the last line of code.
+    # 
+
+    sql_new_ancestor($dbh, $st_out, $st_in, "", $fid);
+
+    $dbh->commit();
+    # $calling{coderef} was set above.
+    $calling{st_in} = $st_in;
+    $calling{st_out} = $st_out;
+
+    return %calling;
+}
+# 20050-02-28 st_lib.pl
+sub if_simple
+{
+    my $expr = $_[0];
+    my $sub_to_call = $_[1];
+    
+    (my $subname,
+     my $line,
+     my $in,
+     my $out,
+     my $last) = read_context();
+    push_context();
+
+    #
+    # Our last is context's out. Remember, inc_context runs
+    # when we return.
+    # Our out will be the called sub's in, so we make a new out stream.
+    # 
+
+    $last = $out;
+    $out = next_stream();
+    while(unwind())
+    {
+	no strict;
+	restorevars();
+	if (eval("$expr"))
+	{
+	    $::out_stream = $out;
+	}
+	else
+	{
+	    $::out_stream = $last;
+	}
+	rewind();
+    }
+
+    # 
+    # Set up the context for the called sub. inc_context will not run.
+    # In stream is where we've been rewinding to, and the last
+    # of the sub is the same as the last we rewound to above.
+    # 
+
+    set_context($sub_to_call, # sub name
+		0,	# line index
+		$out,	# in
+		next_stream(),	# out
+		$last,	# last
+		0);	# inc
+}
+
+
+
+    set_context("main", # sub name
+		0, 	# starting line
+		$::out_stream, # in stream
+		next_stream(), # out stream
+		0);     # last output stream
+
+
+
+# from run_core_sp() in st_lib.pl
+    #
+    # Basically this reads context, evals, then increments context.
+    # After reading we have to check if we're the last line of code, or 
+    # if there is no code left.
+    # If we're the last line, we rewind to $last.
+    # If there is no code we want to try to pop the context. If there is no
+    # context to pop, then we're done.
+    #
+    # Note 1:
+    # If we're last, change out_stream here and in context
+    # in case the last line is a sub call, the sub needs to
+    # rewind to the calling code's input stream.
+
+    while(1)
+    {
+	(my $subname,
+	 my $line,
+	 $::in_stream,
+	 $::out_stream,
+	 my $last) = read_context();
+	my $aref = $exec->{$subname};
+
+	if ($line == $#{$aref})
+	{
+	    # See note 1 above.
+	    $::out_stream = $last;
+	    set_context($subname,$line,$::in_stream,$::out_stream,$last,1);
+	}
+	elsif ($line > $#{$aref})
+	{
+	    if (pop_context())
+	    {
+		inc_context();
+		next;
+	    }
+	    else
+	    {
+		last;
+	    }
+	}
+	my $coderef = $aref->[$line];
+	# See note 2 above.
+	{
+	    no strict;
+	    eval($coderef);
+	    if ($@)
+	    {
+		die "$@\ndeft_st.pl err:$coderef\n";
+	    }
+	} 
+	inc_context(); # won't inc if inc flag == 0
+    }
+
+
+
+
+    #my $part = substr($calling{coderef},0,10);
+    #write_log("bottom. in:$calling{st_in} out:$calling{st_out} p:$part");
+
+    # write_log("daemon in:$st_in cid:$code_id");
+    #write_log("daemon in:$st_in out:$st_out finishes");
+
+    #my $part = substr($coderef,0,10);
+    #write_log("de: in:$st_in out:$st_out part:$part");
+
+    #write_log("isa new: out:$sub_in in:$st_in");
+    #write_log("if: in:$st_in last:$last_out csi:$calling{st_in} cso:$calling{st_out} sub_in:$sub_in");
+
+
+    #write_log("sp postloop. in:$st_in out:$st_out p:(null)"); 
+   #my $part = substr($calling{coderef},0,10);
+    #write_log("sa postloop. in:$st_in out:$st_out p:$part");
+    #write_log("sa in:$st_in sn:$sub_name cid:$code_id");
+	#my $part = substr($an_code,0,10);
+	#write_log("sa loop. in:$st_in out:$st_out p:$part");
+sub old_gen_if_simple
+{
+    my $item = $_[0];
+
+    my $if_expression;
+    my $source;
+    if ($item =~ m/if_simple\s*\((.*?)\)\s*(\{.*\})/s)
+    {
+	$if_expression = $1;
+	$source = $2;
+	#$if_expression = CGI::unescape($if_expression);
+    }
+    else
+    {
+	print "Syntax error, gen_if_simple() for:\n$item\n";
+	exit(1);
+    }
+
+    my $the_code = compile_deft("if_simple:$source");
+    (my $gv, my $sv) = gen_varlist($if_expression);
+
+    my $temp = "my \$false_stream = \$::out_stream;
+my \$true_stream = next_stream();
+\$ifs_flag = 0;
+\$run_once = 1;
+while(unwind() || \$run_once)
+ {
+     \$run_once = 0;
+     $gv
+     if ($if_expression)
+     {
+	\$::out_stream = \$true_stream;
+        \$ifs_flag = 1;
+     }
+     else
+     {
+	\$::out_stream = \$false_stream;
+     }
+     $sv   
+     rewind();
+ }
+   $the_code";
+
+    return $temp;
+}
+# Old code, before the new understanding of stream behavior.
+
+sub old_gen_1n
+{
+    my $code_ref = $_[0];
+
+    my $sc1 = '$::in_stream = pop(@prev);
+$::out_stream = next_stream();
+push(@prev, $::out_stream);
+';
+
+    my $sc2 = '{
+$::in_stream = pop(@prev);
+$::out_stream = next_stream();
+push(@prev, $::out_stream);
+';
+
+    for(my $xx = 0; $xx < $#{$code_ref}; $xx++)
+    {
+	my $next_type = next_valid($code_ref, $xx);
+	
+	if ($next_type != $wrap_sub_stop &&
+	    $next_type != $wrap_if_stop &&
+	    $next_type != $wrap_main_stop)
+	{
+	    if ($code_ref->[$xx][1] == $wrap_scalar ||
+		$code_ref->[$xx][1] == $wrap_top)
+	    {
+		$code_ref->[$xx][0] = "$sc1$code_ref->[$xx][0]";
+		$code_ref->[$xx][0] .= ";";
+		
+# 	    if ($code_ref->[$xx][1] == $wrap_top &&
+# 		$code_ref->[$xx][0] !~ m/\}\Z/)
+# 	    {
+# 		$code_ref->[$xx][0] .= ";";
+# 	    }
+	    }
+	    elsif ($code_ref->[$xx][1] == $wrap_if)
+	    {
+		$code_ref->[$xx][0] = "$sc2$code_ref->[$xx][0]";
+	    }
+	}
+    }
+}
+
+# common_lib.pl
+    #$deft_func{call_simple} = \&call_simple;
+    #$deft_func{deft_get} = \&deft_get;
+    #$deft_func{deft_put} = \&deft_put;
+#
+# call_simple() add a column to the stream with the calling args string.
+#
+sub deft_get
+{
+    my $arg_index = $_[0];
+    my @arg_cols = split(',',get_eenv("_arg_cols"));
+    if ($arg_cols[$arg_index])
+    {
+	return get_eenv($arg_cols[$arg_index]);
+    }
+    my $arg_string = get_eenv("_arg_cols");
+    write_log("Error: deft_get asked for $arg_index in $arg_string");
+    exit(1);
+}
+
+sub deft_put
+{
+    my @ret_list = @_;
+    my @ret_cols = split(',', get_eenv("_ret_cols"));
+    for(my $xx=0; $xx<=$#ret_list; $xx++)
+    {
+	if ($ret_cols[$xx])
+	{
+	    set_eenv($ret_cols[$xx], $ret_list[$xx]);
+	}
+	else
+	{
+	    my $ret_string = get_eenv("_ret_cols");
+	    write_log("Error: deft_put tries non-existant $xx in $ret_string");
+	    exit(1);
+	}
+    }
+}
+
+
+sub call_table
+{
+    my $sub_name = $_[0];
+    my $table_arg = $_[1];
+
+    my @ta_list = split(',',$table_arg);
+    my %select;
+    my %value;
+    foreach my $selector (@ta_list)
+    {
+	if ($selector =~ m/(.*)\s+as\s+(.*)/)
+	{
+	    # key is old, value is new
+	    # $select{question} = "test_text";
+	    # $select{qrow} = "rows";
+	    $select{$1} = $2;
+	}
+    }
+
+    (my $dummy,
+     my $in,
+     my $out,
+     my $last) = read_context();
+
+    # new in is sub's in
+    # new out is sub's out
+    # create new table with cols from table_arg
+    # The next 4 lines are most of what happens in deft_st.pl.
+    # unwind old stream
+    # rewind new stream to new in
+    # unwind new stream from new out
+    # rewind old stream
+
+    $::in_stream = $in;
+    while(unwind())
+    {
+	foreach my $key (keys(%select))
+	{
+	    # $value{question} = get_eenv(question);
+	    # $value{qrows} = get_eenv(qrows);
+	    $value{$key} = get_eenv($key);
+	}
+	# save eenv
+	my $old_eenv = get_ref_eenv();
+	# new, empty eenv
+	clear_eenv();
+	# copy cols from old to new
+	foreach my $key (keys(%select))
+	{
+	    # set_eenv("test_text", "this is a question");
+	    # set_eenv("rows", 30);
+	    set_eenv($select{$key}, $value{$key});
+	}
+	run_core($::exec->{$sub_name}, 0);
+	# copy cols from new to old
+	foreach my $key (keys(%select))
+	{
+	    # $value{question} = get_eenv("test_text");
+	    # $value{qrows} = get_eenv("rows");
+	    $value{$key} = get_eenv($select{$key});
+	}
+	set_ref_eenv($old_eenv);
+	foreach my $key (keys(%select))
+	{
+	    # set_eenv("question", "this is a question");
+	    # set_eenv("qrows", 5);
+	    set_eenv($key, $value{$key});
+	}
+	$::out_stream = $out;
+	rewind();
+	$::in_stream = $in;
+    }
+}
+
+
+
+#dbq_lib.pl
+
+#Unused?
+#
+# Spawn processes, including the last process.
+# We're a bottom (at least relatively) and we'll be doing a
+# lambda (split) stream, so we only need to know the input stream
+# of this set of processes. The whole group of processes will write to
+# the last output stream of the calling (kind of bottom) ancestor.
+#
+sub spawn_all
+{
+    my $sub_name = $_[0];
+
+    (my $dbh,
+     my $host,
+     my $port,
+     my $dummy_top_in,
+     my $st_in,
+     my $last_out,
+     my $code_id,
+     my $fid) =  read_context();
+
+    my $exec = sql_get_code($dbh, $code_id);
+
+    my %calling;
+    $calling{coderef} = pop(@{$exec->{$sub_name}});
+
+    my $st_out = $st_in; # necessary if there is only one line of code.
+    foreach my $an_code (@{$exec->{$sub_name}})
+    {
+	$st_out = sql_new_stream_id($dbh); # my-out, not parent
+	sql_new_ancestor($dbh, $st_out, $st_in, "$an_code", $fid);
+	$dbh->commit(); 	# commit before starting the new process with open_peer().
+
+	#
+	# Remember, $st_in was the parent's-out.
+	#
+	$host = sql_next_host($dbh, $host);
+	my $peer_handle = open_peer($host, $port);
+	print $peer_handle "$st_in,$code_id\n"; 
+	close_peer($peer_handle);
+	$st_in = $st_out;     	# next in is my out
+    }
+    $st_in = $st_out;     	# next in is my out
+    $st_out = $last_out;	# bottom rewinds to last out
+
+    #
+    # no matter what, $st_out is already in @st_list, so I commented it out.
+    # push(@st_list, $st_out);
+    # coderef is "" because $calling{coderef} will be used.
+    # 
+
+    sql_new_ancestor($dbh, $st_out, $st_in, "$calling{coderef}", $fid);
+    $dbh->commit(); 	# commit before starting the new process with open_peer().
+
+    $host = sql_next_host($dbh, $host);
+    my $peer_handle = open_peer($host, $port);
+    print $peer_handle "$st_in,$code_id\n"; 
+    close_peer($peer_handle);
+
+    $calling{st_in} = $st_in;
+    $calling{st_out} = $st_out;
+
+    return %calling;
+}
+sub spawn_bottom
+{
+    my $dbh = $_[0];
+    my $st_in = $_[1];
+    my $st_out = $_[2];
+    my $an_code = $_[3];
+    my $fid = $_[4];
+
+    if (! $st_out || ! $st_in)
+    {
+	$st_out = sql_new_stream_id($dbh);
+	$st_in = sql_new_stream_id($dbh);
+    }
+
+    $fid = sql_new_ancestor($dbh, $st_out, $st_in, $an_code, $fid);
+    $dbh->commit();
+    my %calling;
+    $calling{coderef} = $an_code;
+    $calling{st_in} = $st_in;
+    $calling{st_out} = $st_out;
+    $calling{fid} = $fid;
+    my $part = substr($an_code, 0 , 10);
+    #write_log("spa bottom in:$st_in out:$st_out p:$part");
+    return %calling;
+}
+
+#
+# After the last data has been written to a stream, inactivate it.
+# This is "inactive" in the sense that the writer is finished writing.
+# The reader may still be reading from this stream.
+#
+
+sub sql_inactivate_stream
+{
+    my $q_name = "inactivate_stream";
+    my $dbh = $_[0];
+    my $sf_out = $_[1]; # writer inactivates its output stream after last write
+
+    my $sql = "update family set active_flag=0 where out_stream=$sf_out";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+
+}
+
+
+# dbq_lib
+sub new_proc
+{
+    my $sub_to_call = $_[0];
+
+    (my $dbh,
+     my $host,
+     my $port,
+     my $st_in,
+     my $code_id,
+     my $last_out,
+     my $fid) =  read_context();
+
+    push_context();
+
+    #
+    # The input stream of the subroutine.
+    # Every input stream needs an ancestor.
+    # Need to inactivate it later.
+    #
+
+    my $sub_in = sql_new_stream_id($dbh);
+    sql_new_ancestor($dbh, $sub_in, $st_in, "", $fid);
+    set_context($dbh, $host, $port, $sub_in, $code_id, $last_out, $fid);
+    my %calling = spawn_all($sub_to_call);
+
+    pop_context();
+
+    return $sub_in;
+}
+
+
+
+# 2005-02-28
+#
+# Spawns special top proc/context.
+# 
+sub spawn_top
+{
+    my $last = 0; 
+    my $out = next_stream();
+    my $in = next_stream();
+    my $code = "";
+
+    set_context($code, 		# top has no code
+		$in,		# top has no in
+		$out,		# out
+		$last);		# last
+    push_context(); 
+}
+
+sub spawn_one
+{
+    (my $dummy,
+     my $in,
+     my $out,
+     my $last) = read_context();
+
+    $out = $in;
+    $in = next_stream();
+    set_context("s1",		# top has no code
+		$in,		# top has no in
+		$out,		# out
+		$last);		# last
+    push_context(); 
+}
+
+
+sub spawn_processes
+{
+    my @lines = @{$_[0]};
+
+    (my $dummy,
+     my $in,
+     my $out,
+     my $last) = read_context();
+
+    # Follow the context (instead of replacing it).
+    # Ignore in. Use out and last.
+
+    my $final_line = pop(@lines);
+    my $final_out = $out;
+
+    # $in = $out;
+    foreach my $line (@lines)
+    {
+	$out = next_stream();
+
+	my $part = substr($line, 0, 10);
+	print "sp. for. i:$in o:$out p:$part\n";
+
+	set_context($line,  	# code
+		    $in,	# in
+		    $out,	# out
+		    $last);	# last
+	unshift_context();	# new process to bottom of stack
+	$in = $out;
+    }
+
+    my $part = substr($final_line, 0, 10);
+    print "sp. end  i:$in o:$final_out p:$part\n";
+
+    set_context($final_line,  	# code
+		$in,		# in
+		$final_out,	# out
+		$last);		# last
+    unshift_context();		# new process to bottom of stack
+
+}
+# Compile deft. The result is an array each element of which is suitable for 
+# an eval(). Inline Perl (...) is wrapped as follows:
+# while (unwind())
+# {
+#    restorevars();
+#    ...
+#    set_eenv($var);
+#    rewind();
+# }
+ 
+sub compile_deft
+{
+    my $all_lines = $_[0];
+    my $main_str = "main"; # this changes way too often.
+
+    #
+    # Escape quoted strings to protect contents from parsing.
+    #
+    $all_lines =~ s/([\"\'\`\/])(.*?)(?<!\\)\1/$1.&CGI::escape($2).$1/ge;
+    $all_lines =~ s/(?<![\\\$])\#.*//g;               # remove all comments
+
+    # 
+    # Build a hash of all subroutines including main
+    # (main's trailing : is stripped).
+    # Hash key is the subroutine name.
+    # Anonymous blocks not supported. 
+    # This breaks shebang, pragmas, etc.
+    # 
+    my $remainder = $all_lines;
+    my %all_subs;
+    while(length($remainder))
+    {
+	(my $raw,$remainder) = get_block($remainder);
+	if ($raw =~ m/(\w+):?\s*\{(.*)\}/s)
+	{
+	    $all_subs{$1}= $2;
+	}
+	else
+	{
+	    write_log("error parsing $raw\nremainder:$remainder\n");
+	    exit(1);
+	}
+	$remainder =~ s/^\s+//; # trim off leading whitespace
+    }
+
+    #
+    # Parse individual subs into %each_sub.
+    # Save each unmodified line for a sanity/error check.
+    # Remove leading whitespace.
+    # Find a whole ; terminated statement anchored to the
+    # start of the line (that's important), or else get a
+    # statement block.
+    # 
+
+    my $main_text = $all_subs{$main_str};
+    my %each_sub;	# hash of lists of lines of code ala @main;
+    foreach my $sub_label (keys(%all_subs))
+    {
+	my $parse_me = $all_subs{$sub_label};
+	while($parse_me)
+	{
+	    my $temp = $parse_me;
+	    $parse_me =~ s/^\s*//;
+	    if ($parse_me =~ s/^([^\{\}]*?;)//)
+	    {
+		push(@{$each_sub{$sub_label}}, $1);
+	    }
+	    else
+	    {
+		(my $statement, $parse_me) = get_block($parse_me);
+		if ($statement)
+		{
+		    push(@{$each_sub{$sub_label}}, $statement);
+		}
+	    }
+	    if ($parse_me eq $temp)
+	    {
+		write_log("parse error in:$all_subs{$sub_label}\nnear:$parse_me");
+		exit(1);
+	    }
+	}
+    }
+    
+    #
+    # See initdeft() for deft_func().
+    # Make sure we have something in the form of a subroutine
+    # call before we test it as a subroutine name.
+    # Turn escaped strings back into original form.
+    # Naive $line = CGI::unescape($line);
+    #
+    # Any sub will be called specially as Deft via call_deft().
+    #
+
+    foreach my $sub_ref (keys(%each_sub))
+    {
+	foreach my $line (@{$each_sub{$sub_ref}})
+	{
+	    my $subname;
+	    $line =~ s/^\s+//; # trim the danged leading whitespace
+	    if ($line =~ m/(^\&[a-za-z0-9_]+)|(^[a-za-z0-9_]+\()/)
+	    {
+		$subname = $line;
+		$subname =~ s/.*?(\w+).*/$1/;
+		if (exists($deft_func{$subname}))
+		{
+		    $line = "_$line";
+		}
+		elsif (exists($all_subs{$subname}))
+		{
+		    $line = "_call_deft(\"$subname\")";
+		}
+	    }
+	    $line =~ s/([\"\'\`\/])(.*?)\1/$1.&CGI::unescape($2).$1/ge;
+	}
+    }
+
+    # 
+    # Wrap inline Perl. prep_inline() is above.
+    # There are two types of code: Deft API, and inline Perl.
+    # Deft API is just pushed into the code list.
+    # Consecutive lines of Perl are grouped together and 
+    # wrapped by a Deftish while loop. (see prep_inline() above).
+    # $main[$xxc] =~ m/^_/ a line of Deft API.
+    # $code[$#code] !~ m/^_/ previous line is Deft.
+    # $code[$#code] =~ m/^_/ previous line is Perl.
+    # 
+    # When $#code_list is -1, we're pushing the first line. Perl code
+    # is normally pushed if the previous line was Deft, but at -1 there's
+    # no previous line, so we need a special case.
+    # 
+    #
+
+    my %code;
+    my $tween = "";
+    foreach my $subname (keys(%each_sub))
+    {
+	my @code_list = (); #make sure this is empty list for each outer iteration
+	foreach my $line (@{$each_sub{$subname}})
+	{
+	    if ($line =~ m/^_/)
+	    {
+		push(@code_list, $line);
+		$tween = "";
+	    }
+	    elsif ($code_list[$#code_list] =~ m/^_/)
+	    {
+		push(@code_list, $line);
+		$tween = "";
+	    }
+	    else
+	    {
+		if ($#code_list == -1)
+		{
+		    push(@code_list, "$line");
+		}
+		else
+		{
+		    $code_list[$#code_list] .= "$tween$line";
+		    $tween = "\n"; # don't want leading new line. (?)
+		}
+	    }
+	}
+	@{$code{$subname}} = @code_list;
+    }
+
+    #
+    # Remove leading _ (underscore) which was a temporary marker
+    # on each line of Deft API code.
+    #
+
+    foreach my $subname (keys(%code))
+    {
+	foreach my $item (@{$code{$subname}})
+	{
+	    if (!($item =~ s/^_//))
+	    {
+		my @varlist = getvars($item);
+		my $sv = "";
+		my $tween = "";
+		foreach my $var (@varlist)
+		{
+		    $sv .= "$tween". "set_eenv(\"$var\", \$$var);";
+		    $tween = "\n";
+		}
+		$item = "while (unwind()) {\nrestorevars();\n$item\n$sv\nrewind(); }";
+	    }
+	}
+    }
+
+    if (0)
+    {
+	foreach my $subname (keys(%code))
+	{
+	    print "s:$subname\n";
+	    foreach my $item (@{$code{$subname}})
+	    {
+		my $temp = $item;
+		$temp =~ s/\n/\n        /sg;
+		print "   i:$temp\n";
+	    }
+	}
+	print "e:debug\n";
+    }
+	
+    return (\%code);
+}
+
+
+$ENV{PATH} = "/home/demo";
+$ENV{BASH_ENV} = "";
+
+my $path = abs_path(getcwd());
+if ($0 =~ m/(.*)\//)
+{
+    $path = abs_path($1);
+}
+
+
+sub sql_node_pk_by_name
+{
+    write_log("sql_node_pk_by_name not used.");
+    die "sql_node_pk_by_name not used\n";
+
+    my $q_name = "sql_node_pk_by_name";
+    my $dbh = $_[0];
+    my $gr_fk = $_[1];
+    my $node_name = $_[2];
+    my $sql = "select node_pk from node
+		where gr_fk=$gr_fk and node_name='$node_name'";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$sql\n$DBI::errstr\n"; }
+    (my $node_pk) = $sth->fetchrow_array();
+    return $node_pk;
+}
+
+#
+# After the last data has been written to a stream, inactivate it.
+# This is "inactive" in the sense that the writer is finished writing.
+# The reader may still be reading from this stream.
+#
+
+sub sql_inactivate_stream
+{
+    my $q_name = "inactivate_stream";
+    my $dbh = $_[0];
+    my $sf_out = $_[1]; # writer inactivates its output stream after last write
+
+    my $sql = "update family set active_flag=0 where out_stream=$sf_out";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+}
+
+# dbq_sql_lib.pl
+
+#
+# Init a family of streams, all active, none have readers yet.
+# Stream ids are now generated from a sequence to make sure they 
+# are unique (and won't be repeated).
+#
+sub sql_init_streams
+{
+    my $q_name = "sql_init_streams";
+    my $dbh = $_[0];
+    my $stream_count = $_[1]; 
+
+    my $sql = "insert into dbq_flags (is_active, reader_id) values (1,'none')";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    
+    my $st_sql = "select currval('st_seq')";
+    my $st_sth = $dbh->prepare($st_sql);
+    if ($dbh->err()) { die "$q_name 2\n$st_sql\n$DBI::errstr\n"; }
+
+    my $sf_pk;
+    my @id_array;
+    for(my $xx=0; $xx<=$stream_count; $xx++)
+    {
+	$sth->execute();     # insert dbq_flags record
+	if ($dbh->err()) { die "$q_name 3\n$DBI::errstr\n"; }
+
+	$st_sth->execute();  # get the new sf_pk (of the new record)
+	if ($dbh->err()) { die "$q_name 4\n$st_sql\n$DBI::errstr\n"; }
+	($sf_pk) = $st_sth->fetchrow_array();
+
+	push(@id_array, $sf_pk);
+    }
+    $sth = $dbh->prepare("update dbq_flags set sf_in=?,sf_out=? where sf_pk=?");
+    
+    # Set all the out streams except the last (which is set below to zero)
+    for(my $xx=0; $xx<$#id_array; $xx++)
+    {
+	$sth->execute($id_array[$xx], $id_array[$xx+1], $id_array[$xx]);
+	if ($dbh->err()) { die "$q_name 5\n$st_sql\n$DBI::errstr\n"; }
+    }
+
+    # Loop does xx+1, so we have to special case the last record.
+    $sth->execute($id_array[$#id_array], 0, $id_array[$#id_array]);
+    if ($dbh->err()) { die "$q_name 6\n$st_sql\n$DBI::errstr\n"; }
+    
+    # The head process owns the zeroth record.
+    $dbh->do("update dbq_flags set reader_id='head' where sf_in=$id_array[0]");
+    if ($dbh->err()) { die "$q_name 7\n$st_sql\n$DBI::errstr\n"; }
+    
+    # Return the output stream (sf_out) of the zeroth record.
+    return $id_array[1];
+}
+
+
+# dbq_sql_lib.pl
+
+sub sql_next_in
+{
+    my $q_name = "sql_next_in";
+    my $dbh = $_[0];
+
+    my $ppid = $$; # getppid();
+    my $hostname = `hostname`;
+    chomp($hostname);
+    print "h:$hostname:$ppid\n";
+    my $reader_id = "$hostname:$ppid";
+
+    my $sth;
+
+    my $sf_pk = 0;
+    my $rows = 0;
+    my $sf_out = 0;
+    my $sf_in = 0;
+    my $first_done = 0;
+    while (! $sf_pk) #  || ! $out_stream)
+    {
+	if ($first_done)
+	{
+	    # sleep(1); # sleep after the first try;
+	}
+	$sth = $dbh->prepare("select sf_pk,sf_in,sf_out from dbq_flags where reader_id='none' order by sf_pk limit 1");
+	$sth->execute();
+	if ($dbh->err()) { die "doq $q_name 1\n$DBI::errstr\n";  }
+	($sf_pk, $sf_in, $sf_out) = $sth->fetchrow_array();
+	$sth->finish();
+
+	$sth = $dbh->prepare("delete from dbq_flags where sf_pk=$sf_pk");
+	if ($dbh->err()) { die "doq $q_name 2\n$DBI::errstr\n";  }
+	$rows = $sth->execute();
+
+	$dbh->commit();
+	
+	if ($rows == 0)
+	{
+	    #
+	    # Even if we got an sf_pk, if we are unable to delete, then another
+	    # process got there first and we don't really have an sf_pk.
+	    #
+	    $sf_pk = 0;
+	}
+	elsif ($sf_pk)
+	{
+	    #
+	    # If things look good, insert a proper stream_flag record to replace the one we deleted.
+	    # The sf_pk will be different, so get it from the sequence.
+	    # 
+
+	    $sth = $dbh->prepare("insert into dbq_flags (is_active,sf_in,sf_out,reader_id)
+				  values (1,$sf_in,$sf_out,'$reader_id')");
+	    if ($dbh->err()) { die "doq $q_name 3\n$DBI::errstr\n";  }
+	    $sth->execute();
+	    if ($dbh->err()) { die "doq $q_name 4\n$DBI::errstr\n";  }
+	    $sth->finish();
+	    $dbh->commit();
+
+	    #$sth = $dbh->prepare("select currval('st_seq')");
+	    #if ($dbh->err()) { die "doq $q_name 5\n$DBI::errstr\n";  }
+	    #$rows = $sth->execute();
+	    #if ($dbh->err()) { die "doq $q_name 6\n$DBI::errstr\n";  }
+	    #($sf_pk) = $sth->fetchrow_array();
+	}
+	$first_done = 1;
+    }
+
+    print "reading $sf_pk\n";
+    return ($sf_in, $sf_out);
+}
+
+
+
+#
+# This locks any connections to the db. To use this table
+# other processes must disconnect and reconnect. Dunno why.
+#
+sub sql_drop_indexes
+{
+    my $q_name = "sql_drop_indexes";
+    my $dbh = $_[0];
+    my $sql = "drop index osr_index";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+}
+
+
+sub sql_create_indexes
+{
+    my $q_name = "sql_create_indexes";
+    my $dbh = $_[0];
+    my $sql = "create index osr_index on stream_column (os_row)";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+}
+
+
+
+sub sql_stream_active
+{
+    my $q_name = "sql_stream_archive";
+    my $dbh = $_[0];
+    my $st_id = $_[1];
+    
+    my $sql = "select active_flag from family where out_stream=$st_id";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    my $rows = $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$sql\n$DBI::errstr\n"; }
+    my $active_flag = 0;
+    #
+    # The first stream doesn't have a previous out_stream.
+    # Nothing can be read, so active_flag is false.
+    # 
+    if ($rows == 0)
+    {
+	return 0;
+	#die "no family row:$st_id\n$sql\n";
+    }
+    ($active_flag) = $sth->fetchrow_array();
+    $sth->finish();
+    return $active_flag;
+}
+
+
+
+    # 
+    # If we don't have code, then do an ancestor unwind, which is
+    # currently implemented as unwinding from the db. The oldest ancestor
+    # exists only to get the stream going for the rest of the family.
+    #
+    # Note that checking $@ works for some errors, but the perlfunc man page
+    # says that it won't work for everything. 
+    # 
+    if (! $coderef)
+    {
+	set_st_info($dbh, $st_in, $st_out);
+	while(unwind())
+	{
+	    rewind();
+	}
+    }
+    else
+    {
+	no strict;
+	eval($coderef);
+	if ($@)
+	{
+	    die "$@\ndeftd.pl err:$coderef\n";
+	}
+    }
+
+# Doesn't work.
+# BEGIN { open(GOOF, "| /usr/bin/logger") || die "can't open"; print GOOF "test logging\n"; }
+# Works fine.
+#BEGIN { open(STDERR, "| /bin/cat > tmp.txt"); }
+# Works fine too, but there is error trapping in unwind.
+# BEGIN { $var= "/home/demo/public_html/deft/err_$$.out"; open(STDERR, "| /bin/cat > $var"); }
+
+sub sql_read_prep
+{
+    my $q_name = "sql_read_prep";
+    my $dbh = $_[0];
+    my $sr_in = $_[1]; # reader's read_stream
+
+    my $sql = "select data from stream_row where sr_in=$sr_in and marked=1";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$dbi::errstr\n"; }
+    return $sth; 
+}
+
+# Read records from the intermediate read stream.
+# Check upstream to see if we should continue.
+sub sql_read_execute
+{
+    my $q_name = "sql_read_execute";
+    my $sth = $_[0];
+    my $rows = $sth->execute(); # reads read_stream 
+    if ($sth->err()) { die "$q_name 2\n$dbi::errstr\n"; }
+    if ($rows > 0)
+    {
+	return 1;
+    }
+    else
+    {
+	return 0;
+    }
+}
+
+# 2005-01-11
+# Old think: use ping
+# Crappy 'ping' changes output format. Find another way to do this.
+# 1 packets transmitted, 1 received, 0% packet loss, time 0ms
+# 1 packets transmitted, 1 packets received, 0% packet loss
+# my $temp = `ping -w 1 -c 1 -n $host`;
+
+# 2005-01-11
+sub otherhost
+{
+    my @hosts = $_[0];
+    my $hostname = `/bin/hostname`;
+    chomp($hostname);
+    foreach my $host (@hosts)
+    {
+        # try to talk to another host
+        if ($host ne $hostname)
+        {
+            #my $temp = `ping -w 1 -c 1 -n $host`;
+	    # -w 1 time out after one second
+	    # -z just check, don't connect
+	    # -v print a message to stderr
+	    my $temp = `nc -w 1 -zv $host $::port 2>&1`;
+            if ($temp =~ m/open/)
+            {
+                return $host;
+            }
+        }
+    }
+    return $hostname;
+}
+# 2005-01-08 This hasn't been used in a loooong time.
+	# my $data = sql_read_fetch($sth);
+	if (0) # (! $data)
+	{
+	    my $rr = $sth->rows();
+	    write_log("uw has undef data:$rr");
+	    #$dbh->commit();
+	    #$dbh->disconnect();
+	    exit(1);
+	}
+	}
+# 2005-01-08 This hasn't been used in a loooong time.
+# updated.
+sub otherhost
+{
+    foreach my $host (@{$_[0]})
+    {
+	# maybe Net::Ping ?
+	my $temp = `ping -w 1 -c 1 -n $host`;
+	# 2 packets transmitted, 0 packets received, 100% packet loss 
+	# 1 packets transmitted, 1 packets received, 0% packet loss
+	if ($temp =~ m/1 received/s)
+	{
+	    return $host;
+	}
+    }
+    return $::myhostname;
+}
+# 2005-01-08 This hasn't been used in a loooong time.
+# Not used.
+sub set_rewind
+{
+    $::rewind_flag = 1;
+}
+
+sub wr
+{
+    write_log("r_f: $::rewind_flag");
+}
+
+my $nr_flag = 0;
+sub no_rewind
+{
+    $nr_flag = 1;
+}
+
+
+
+# $agg_eval = "keystr('$distinct') && exists(\$::exists{keystr('$distinct')}) != 1";
+# keystr('faq_pk') && exists($::exists{keystr('faq_pk')}) != 1
+sub aw_results
+{
+    my $ks_val = keystr($_[0]);
+    if ($ks_val && exists($::exists{$ks_val}))
+    {
+	return 0;
+    }
+    return 1;
+}
+
+# dec 09 2005 from runt_compile.pl
+
+sub compile
+{
+    my $in_filename = $_[0];
+    my $use_db_flag = $_[1];
+
+    my $out_filename = rnt_name($in_filename);
+
+    $::invoke = "in:$in_filename out:$out_filename";
+
+    my $alltxt;
+    my @stat_array = stat($in_filename);
+    my $te_epoch = $stat_array[9]; # mtime
+    my $size = $stat_array[7];
+    if (! open(IN, "< $in_filename"))
+    {
+	my $pwd = `/bin/pwd`;
+	chomp($pwd);
+	WriteError("runt->compile: can't open $in_filename for read. pwd:$pwd");
+	exit(1);
+    }
+    sysread(IN, $alltxt, $size);
+    close(IN);
+    
+    # At this point only {value_xx} is allowed inside "" in the HTML.
+    $alltxt =~ s/%7B(value_[0-9]*)%7D/{$1}/sig;
+
+    $alltxt = pull_cspecs($alltxt);
+    my $re = re();
+    if ($re)
+    {
+	write_log("$0: Template compile error for $in_filename:\n$re");
+	# warn("Template compile error for $in_filename:\n$re");
+	clean_db_handles();
+	exit(1);
+    }
+    create_divs($alltxt);
+    convert_nest();
+
+    #
+    # Uncomment this to get %::nest printed into the log
+    #
+    # parse_nest('t');
+
+    #
+    # Nest has some other stuff in it, since we can only freeze a single hash into a file 
+    # (or at least that's what I think).
+    # $::nest{key}{stuff} where {stuff} is _chunk, _agg_spec, _tweens
+    #
+    # Assume that the calling code is smart about paths, and if this filename 
+    # needs a path, it has one.
+    # 
+    my $frozen = freeze(\%::nest);
+
+    if ($use_db_flag)
+    {
+	# remove file path,extension.
+	#$out_filename =~ s/.*\/(.*)/$1/;
+	#$out_filename =~ s/(.*)\..*/$1/;
+
+	my $dbh = system_dbh();
+	sql_put_template($dbh, $in_filename, $frozen, $te_epoch);
+	$dbh->commit();
+
+	# Cached.
+	# $dbh->disconnect();
+    }
+    else
+    {
+	if (! open(OUT, "> $out_filename"))
+	{
+	    WriteError("runt_compile.pl compile(): $@\ncan't open $out_filename for output\n");
+	    exit(1);
+	}
+	print OUT $frozen;
+	close(OUT);
+    }
+}
+
+sub compiled_template_exists
+{
+    my $file_name = $_[0];
+    my $use_db_flag = $_[1];
+    if ($use_db_flag)
+    {
+	my $dbh = system_dbh();
+	my $result = sql_exists_template($dbh, $file_name);
+	return $result;
+    }
+    elsif (-e $file_name)
+    {
+	return 1;
+    }
+    return 0;
+}
+
+# 2005-11-06
+
+#
+# make part price
+# sum on price by make
+# maybe the arg order should be different?
+# distinct_on("sum", ["make"], ["price"]);
+#
+sub distinct_on_old
+{
+    my $op_code = $_[0];
+    my @agg_vars = @{$_[1]};
+    my @dis_vars = @{$_[2]};
+
+    my $uflag = 0; # did we get data on previous unwind?
+    my %row_val;
+    $op_code =~ s/count/0/i;
+    $op_code =~ s/sum/1/i;
+    $op_code =~ s/max/2/i;
+    $op_code =~ s/min/3/i;
+
+    my @rows;
+    while(unwind() && restorevars() )
+    {
+	my %local_eenv = %{get_ref_eenv()};
+	push(@rows, \%local_eenv);
+	my $key = join(', ', @{slice_eenv(\@agg_vars)});
+	foreach my $dvar (@dis_vars)
+	{
+	    if ($op_code == 0) # count
+	    {
+		$row_val{$key}{$dvar}++;
+	    }
+	    elsif ($op_code == 1) #sum
+	    {
+		$row_val{$key}{$dvar} += get_eenv($dvar);
+	    }
+	    elsif ($op_code == 3) # max
+	    {
+		my $val = get_eenv($dvar);
+		my @temp = sort [$row_val{$key}{values}{$dvar}, $val];
+		$row_val{$key}{$dvar} = pop(@temp);
+	    }
+	    elsif ($op_code == 4) # min
+	    {
+		my $val = get_eenv($dvar);
+		my @temp = sort [$row_val{$key}{$dvar}, $val];
+		$row_val{$key}{$dvar} = shift(@temp);
+	    }
+	}
+    }
+    foreach my $hash (@rows) # (@{$row_val{$key}{row}})
+    {
+	set_ref_eenv($hash);
+	my $key = join(', ', @{slice_eenv(\@agg_vars)});
+	foreach my $col (keys(%{$row_val{$key}}))
+	{
+	    set_eenv($col, $row_val{$key}{$col});
+	}
+	rewind();
+    }
+}
+
+
+
+
+
+
+sub clean_merged
+{
+    my $code_ref = $_[0];
+    foreach my $key (sort(keys(%{$code_ref})))
+    {
+	if ($code_ref->{$key}[1] == $wrap_merged ||
+	    (($code_ref->{$key}[0] =~ m/^\s+$/s ||
+	     ! $code_ref->{$key}[0]) && $code_ref->{$key}[1] != $wrap_stop))
+	{
+	    delete($code_ref->{$key});
+	}
+    }
+    # Don't return.
+    # We operated directly on the hash referred to by $code_ref.
+}
+# Compile deft. 
+# %code is hash of lists, one hash entry per "line". The hash key
+# is suitable for sorting, and is managed completely by the two insert
+# functions i_after() and i_before().
+# List element zero is the line.
+# Element one is the wrap type.
+
+sub old_compile_deft
+{
+    my $all_lines_ref = $_[0];
+
+    # See note 1 above.
+
+    # my $remainder = $all_lines;
+    my @code;
+
+    # Why initialize with an undef at the end?
+    # my $key = i_after(\%code, undef, "", $wrap_none);
+    push(@code, [undef, $wrap_none]);
+
+    while($#{$all_lines_ref} >= 0)
+    {
+	(my @raw) = get_block($all_lines_ref);
+	# print "a:$#{$all_lines_ref} zero:$raw[0]\n";
+
+	# if ($raw[0] =~ m/(perl|sub|\s*)\s*(\w+:?)\s*\{(.*)\}/s)
+	if ($raw[0] =~ m/(perl|sub|\s*)\s*(\w+:?)/s)
+	{
+	    my $s_type = $1;
+	    my $s_name = $2;
+	    my $s_code = $3;
+
+	    # print "t:$s_type n:$s_name c:$s_code\n";
+
+	    if ($s_type eq 'perl')
+	    {
+		# This needs work...
+		# $key = i_after(\%code, $key, "sub $s_name\n{\n $s_code\n}\n", $wrap_perl);
+		push(@code, ["sub $s_name\n{\n $s_code\n}\n", $wrap_perl]);
+	    }
+	    elsif ($s_type eq 'sub')
+	    {
+		#$key = i_after(\%code, $key, $raw[0], $wrap_start);
+		push(@code, [$raw[0], $wrap_start]);
+		$is_dsub{$s_name} = 1;
+	    }
+	    elsif ($s_name =~ m/$main_str/)
+	    {
+		# $key = i_after(\%code, $key, $raw[0], $wrap_main);
+		push(@code, [$raw[0], $wrap_main]);
+	    }
+	    elsif ($s_name =~ m/if_simple/)
+	    {
+		# $key = i_after(\%code, $key, $raw[0], $wrap_ifs);
+		push(@code, [$raw[0], $wrap_ifs]);
+	    }
+	    elsif ($s_name =~ m/agg_simple/)
+	    {
+		# $key = i_after(\%code, $key, $raw[0], $wrap_ags);
+		push(@code, [$raw[0], $wrap_ags]);
+	    }
+	    else
+	    {
+		print "Error: Unknown code type.\n$raw[0]";
+		write_log("Error: Unknown code type.\n$raw[0]"); # \n:$remainder\n");
+		clean_db_handles();
+		exit(1);
+	    }
+
+	    # First lines of blocks (e.g. $raw[0]) are special.
+	    # The rest of the lines of the block get wrap_top.
+	    
+	    for(my $xx=1; $xx<=$#raw; $xx++)
+	    {
+		#$key = i_after(\%code, $key, $raw[$xx], $wrap_top);
+		push(@code, [$raw[$xx], $wrap_top]);
+	    }
+	    # $key = i_after(\%code, $key, "", $wrap_stop);
+	    push(@code, ["", $wrap_stop]);
+	}
+	elsif ($#raw >= 0 || $#{$all_lines_ref} >= 0)
+	{
+	    write_log("Error: Syntax error (text outside block).\nr:$raw[0]\na:$all_lines_ref->[0]\n");
+	    clean_db_handles();
+	    exit(1);
+	}
+	# $remainder =~ s/^\s+//; # trim off leading whitespace
+    }
+
+    if (1)
+    {
+	foreach my $cref (@code)
+	{
+	    print "$cref->[1] $cref->[0]\n"
+	}
+	# exit();
+    }
+
+    gen_perl(\@code);
+
+    #handle_deft(\%code);
+    #stage_two(\%code);
+    #clean_merged(\%code);
+    #return gen_perl(\%code);
+}
+sub stage_two
+{
+    my $code_ref = $_[0];
+
+    # There are two types of code: Deft API, and inline Perl.
+    # Consecutive lines of Perl are grouped together.
+    
+    my $prev_type = 1;	
+    my $prev_key = "";
+    foreach my $key (sort(keys(%{$code_ref})))
+    {
+	if ($code_ref->{$key}[1] == $wrap_scalar &&
+	    ($prev_type == $wrap_scalar || $prev_type == $wrap_merged))
+	{
+	    # This line is Perl, previous line was Perl too.
+	    # Concat this line to previous.
+
+	    $code_ref->{$prev_key}[0] .=  "\n" . $code_ref->{$key}[0];
+	    $code_ref->{$key}[0] = "";
+	    $code_ref->{$key}[1] = $wrap_merged;
+	}
+	else
+	{
+	    $prev_key = $key;
+	}
+	$prev_type = $code_ref->{$key}[1];
+    }
+    
+    if (0)
+    {
+	foreach my $key (sort(keys(%{$code_ref})))
+	{
+	    print "$key:$code_ref->{$key}[1] $code_ref->{$key}[0]\n\n";
+	}
+	 exit();
+    }
+
+    # Don't return a value.
+    # We operated directly on the hash referred to by $code_ref.
+}
+sub i_after
+{
+    my $cr = $_[0];
+    my $key = $_[1];
+    my $source = $_[2];
+    my $type = $_[3];
+
+    if (! $key)
+    {
+	$key = "g";
+    }
+
+    # add "g".
+    # if that exists add "a" x N . "g" until unique.
+
+    my $k_after = $key . "g";
+    my $yy = 1;
+    while (exists($cr->{$k_after}))
+    {
+	$k_after = $key . "a" x $yy . "g";
+	$yy++;
+    }
+    $cr->{$k_after}[0] = $source;
+    $cr->{$k_after}[1] = $type;
+    return $k_after;
+}
+
+sub i_before
+{
+    my $cr = $_[0];
+    my $key = $_[1];
+    my $source = $_[2];
+    my $type = $_[3];
+
+    if (! $key)
+    {
+	$key = "g";
+    }
+
+    # print "key:$key ";
+    # trim final "g"
+    # add "a". "g
+    # if that exists add "a". "g" x N until unique.
+
+    $key =~ s/g$/a/;
+    my $k_before = $key . "g";
+    my $yy = 1;
+    while (exists($cr->{$k_before}))
+    {
+	$k_before = $key . "g" x $yy;
+	$yy++;
+    }
+    $cr->{$k_before}[0] = $source;
+    $cr->{$k_before}[1] = $type;
+    # print "kb:$k_before $source\n";
+    return $k_before;
+}
+
+# Note 2
+# Look for blocks and combine lines that will be
+# wrapped together later.
+    
+sub handle_deft
+{
+    my $code_ref = $_[0];
+    # See Note 2 above.
+
+    foreach my $key (sort(keys(%{$code_ref})))
+    {
+	my $orig = $key;
+	if ($code_ref->{$key}[1] == $wrap_perl)
+	{
+	    # $code_ref->{$key}[0] =~ s/([\"\'\`\/])(.*?)\1/$1.&decode_string($2).$1/ge;
+	    next;
+	}
+	my $parse_me = $code_ref->{$key}[0];
+	my $go_flag = 1;
+	while($go_flag)
+	{
+	    my $temp = $parse_me;
+	    if ($parse_me =~ s/^([^\{\}]*?;)//)
+	    {
+		my $line = $1;
+		$line = unescape($line);
+		$key = i_before($code_ref, $orig, $line, 0);
+	    }
+	    else
+	    {
+		# if we unescape parse_me here, "icky?})#" parses wrong.
+		# if not, /\(\)// parses wrong.
+
+		(my $statement, $parse_me) = get_block($parse_me);
+		if ($statement)
+		{
+		    if ($statement =~ m/^if_simple/s)
+		    {
+			# A compiled if_simple is essentially a case of top code.
+			$statement = unescape($statement);
+			my $finished_code = gen_if_simple($statement);
+			$key = i_before($code_ref, $orig, $finished_code, $wrap_top);
+		    }
+		    elsif ($statement =~ m/^agg_simple/s)
+		    {
+			# A compiled agg_simple is essentially a case of top code.
+			$statement = unescape($statement);
+			my $finished_code = gen_agg_simple($statement);
+			$key = i_before($code_ref, $orig, $finished_code, $wrap_top);
+		    }
+		    else
+		    {
+			$statement = unescape($statement);
+			$key = i_before($code_ref, $orig, $statement, 0);
+		    }
+		}
+	    }
+	    if (! $parse_me)
+	    {
+		$go_flag = 0;
+		$code_ref->{$orig}[0] = $parse_me;
+		$code_ref->{$orig}[1] = $wrap_none;
+	    }
+	    elsif ($parse_me eq $temp)
+	    {
+		$go_flag = 0;
+		$code_ref->{$orig}[0] = $parse_me;
+		#write_log("parse error in:$code_ref->{$orig}[0]\nnear:$parse_me");
+		#exit(1);
+	    }
+	    #delete($code_ref->{$orig});
+	    #$code_ref->{$orig}[1] = $wrap_delete;
+	}
+    }
+
+    if (0)
+    {
+	foreach my $key (sort(keys(%{$code_ref})))
+	{
+	    print "$key:$code_ref->{$key}[1] $code_ref->{$key}[0]\n\n";
+	}
+	exit();
+    }
+
+    # see initdeft() for deft_func().
+    # make sure we have something in the form of a subroutine
+    # call before we test it as a subroutine name.
+    # turn escaped strings back into original form.
+    # naive $line = decode_string($line);
+    #
+    # in case you were wondering... deft subroutine can't assign a 
+    # return value to a lvalue. Return values from deft subroutines
+    # is a very bad idea, so not supporting it is a good thing.
+    # anchoring the regex to the beginning of the line precludes
+    # assigning return values. aren't you glad to know this?
+
+    foreach my $key (keys(%{$code_ref}))
+    {
+	if ($code_ref->{$key}[1] == $wrap_perl)
+	{
+	    next;
+	}
+	$code_ref->{$key}[0] =~ s/^\s+//; # trim leading whitespace
+	if ($code_ref->{$key}[0] =~ m/(^\&[a-za-z0-9_]+)|(^[a-za-z0-9_]+\()/)
+	{
+	    my $sub_name = $code_ref->{$key}[0];
+	    $sub_name =~ s/.*?(\w+).*/$1/s;
+	    if (exists($deft_func{$sub_name}))
+	    {
+		$code_ref->{$key}[1] = $wrap_top;
+	    }
+	    elsif (exists($is_dsub{$sub_name}) || $sub_name eq 'call_deft')
+	    {
+		i_after($code_ref, $key, "garbage_collection();", $wrap_top);
+		$code_ref->{$key}[1] = $wrap_dsub;
+	    }
+	}
+	$code_ref->{$key}[0] =~ s/([\"\'\`\/])(.*?)\1/$1.&decode_string($2).$1/ge;
+    }
+
+    if (0)
+    {
+	foreach my $key (sort(keys(%{$code_ref})))
+	{
+	    print "$key:$code_ref->{$key}[1] $code_ref->{$key}[0]\n\n";
+	}
+	#exit();
+    }
+    # Don't return.
+    # We operated directly on the hash referred to by $code_ref.
+}
+
+sub inc_context
+{
+    if ($context{inc})
+    {
+	$context{line}++;
+	$context{in} = $context{out};
+	$context{out} = next_stream();
+    }
+}
+
+
+
+
+
+# Add Perl code to the parsed Deft.
+# e.g. generate the Perl output.
+
+sub old_gen_perl
+{
+    my $code_ref = $_[0];
+    
+    # Keep track of all keys that have a stop as the next key.
+
+    my %is_last;
+    my $prev_key = "a";
+    foreach my $key (sort(keys(%{$code_ref})))
+    {
+	if ($code_ref->{$key}[1] == $wrap_stop)
+	{
+	    $is_last{$prev_key} = 1;
+	}
+	if ($code_ref->{$key}[1] == $wrap_scalar ||
+	    $code_ref->{$key}[1] == $wrap_top || 
+	    $code_ref->{$key}[1] == $wrap_none || 
+	    $code_ref->{$key}[1] == $wrap_dsub )
+	{	    
+	    $prev_key = $key;
+	}
+    }
+
+    my $sub_type = "sub";
+    foreach my $key (sort(keys(%{$code_ref})))
+    {
+	if ($code_ref->{$key}[1] == $wrap_main)
+	{
+	    $sub_type = "main";
+	    $code_ref->{$key}[0] .= "\n\{\n    my \$run_once = 0;\n";
+	    $code_ref->{$key}[0] .= "    my \$prev_out = 0;\n";
+	}
+
+	if ( $code_ref->{$key}[1] == $wrap_scalar)
+	{
+	    (my $gv, my $sv) = gen_varlist($code_ref->{$key}[0]);
+	    my $temp = $code_ref->{$key}[0];
+	    $code_ref->{$key}[0] = "  \$run_once = 1;\n";
+	    $code_ref->{$key}[0] .= "  while (unwind() || \$run_once)\n";
+	    $code_ref->{$key}[0] .= "  {\n";
+	    $code_ref->{$key}[0] .= "  \$run_once = 0;\n";
+	    $code_ref->{$key}[0] .= "  $gv\n";
+	    $code_ref->{$key}[0] .= "  $temp\n";
+	    $code_ref->{$key}[0] .= "  $sv\n";
+	    $code_ref->{$key}[0] .= "  rewind();\n";
+	    $code_ref->{$key}[0] .= "  }\n";
+	}
+
+	if (($code_ref->{$key}[1] == $wrap_scalar ||
+	     $code_ref->{$key}[1] == $wrap_top || 
+	     $code_ref->{$key}[1] == $wrap_dsub ))
+	{
+	    # Save the statement. Insert code, then concatenate statement.
+	    my $statement = $code_ref->{$key}[0];
+	    $code_ref->{$key}[0] = "";
+
+	    if ($is_last{$key} && $sub_type eq 'sub')
+	    {
+		# last line
+		$code_ref->{$key}[0] .= "    \$::in_stream = \$prev_out;\n";
+		$code_ref->{$key}[0] .= "    \$::out_stream = \$out;\n";
+		$code_ref->{$key}[0] .= "    \$prev_out = \$::out_stream;\n";
+	    }
+	    else
+	    {
+		# any non-last line
+		$code_ref->{$key}[0] .= "    \$::in_stream = \$prev_out;\n";
+		$code_ref->{$key}[0] .= "    \$::out_stream = next_stream();\n";
+		$code_ref->{$key}[0] .= "    \$prev_out = \$::out_stream;\n";
+	    }
+
+	    # Must apply last/non-last wrapping before this.
+	    if ($code_ref->{$key}[1] == $wrap_dsub)
+	    {
+		$code_ref->{$key}[0] .= "    set_context(\"\", \$::in_stream, \$::out_stream, \"\");\n";
+		$code_ref->{$key}[0] .= "    push_context();\n";
+	    }
+
+	    # emit code for call_deft() calls
+	    # See gen_shebang for %_d_code_refs.
+
+	    if ($statement =~ m/^call_deft\s*\(\$(.*)\)/)
+	    {
+		$statement = "\&{\$_d_code_refs{get_eenv(\"$1\")}};";
+	    }
+	    $code_ref->{$key}[0] .= "    $statement\n";
+	}
+
+	if ($code_ref->{$key}[1] == $wrap_start)
+	{
+	    $sub_type = "sub";
+	    $code_ref->{$key}[0] .= "\n    \{\n";
+	    $code_ref->{$key}[0] .= "    inc_depth();\n";
+	    $code_ref->{$key}[0] .= "    pop_context();\n";
+	    $code_ref->{$key}[0] .= "    (my \$dmy, my \$prev_out, my \$out, \$dmy) = read_context();\n";
+	}
+	elsif ($code_ref->{$key}[1] == $wrap_stop)
+	{
+	    if ($sub_type ne "main")
+	    {
+		$code_ref->{$key}[0] .= "    dec_depth();\n";
+	    }
+	    $code_ref->{$key}[0] .= "}\n";
+	}
+	elsif ($code_ref->{$key}[1] == $wrap_ifs)
+	{
+	    my $temp = $code_ref->{$key}[0];
+	    $code_ref->{$key}[0] = "    if (\$ifs_flag)\n";
+	    $code_ref->{$key}[0] .= "    {\n";
+	    $code_ref->{$key}[0] .= "    my \$prev_out = \$true_stream;\n";
+	    $code_ref->{$key}[0] .= "    my \$out = \$false_stream;\n";
+	}
+	elsif ($code_ref->{$key}[1] == $wrap_ags)
+	{
+	    my $temp = $code_ref->{$key}[0];
+	    $code_ref->{$key}[0] = 'while($pop_count > 0)' . "\n";
+	    $code_ref->{$key}[0] .= ' {' . "\n";
+	    $code_ref->{$key}[0] .= ' $pop_count--;' . "\n";
+	    $code_ref->{$key}[0] .= ' pop_context();' . "\n";
+	    $code_ref->{$key}[0] .= ' (my $dy, my $prev_out, my $out, $dy) = read_context();'."\n";
+	}
+    }
+
+    my $output;
+	
+    foreach my $key (sort(keys(%{$code_ref})))
+    {
+	$output .= "$code_ref->{$key}[0]";
+    }
+
+    return $output;
+}
+
+
+
+# move to archive apr 23 2006
+# Note 2
+# Get individual statements.
+# Remove leading whitespace.
+# Find a whole ; terminated statement anchored to the
+# start of the line (that's important), or else get a
+# statement block.
+# If dsub, insert a garbage_collection() call after statement.
+    
+sub handle_deft
+{
+    my $code_ref = $_[0];
+
+    # See Note 2 above.
+
+    foreach my $key (sort(keys(%{$code_ref})))
+    {
+	my $orig = $key;
+	if ($code_ref->{$key}[1] == $wrap_perl)
+	{
+	    # $code_ref->{$key}[0] =~ s/([\"\'\`\/])(.*?)\1/$1.&decode_string($2).$1/ge;
+	    next;
+	}
+	my $parse_me = $code_ref->{$key}[0];
+	my $go_flag = 1;
+	while($go_flag)
+	{
+	    my $temp = $parse_me;
+	    if ($parse_me =~ s/^([^\{\}]*?;)//)
+	    {
+		my $line = $1;
+		$line = unescape($line);
+		$key = i_before($code_ref, $orig, $line, 0);
+	    }
+	    else
+	    {
+		# if we unescape parse_me here, "icky?})#" parses wrong.
+		# if not, /\(\)// parses wrong.
+
+		(my $statement, $parse_me) = get_block($parse_me);
+		if ($statement)
+		{
+		    if ($statement =~ m/^if_simple/s)
+		    {
+			# A compiled if_simple is essentially a case of top code.
+			$statement = unescape($statement);
+			my $finished_code = gen_if_simple($statement);
+			$key = i_before($code_ref, $orig, $finished_code, $wrap_top);
+		    }
+		    elsif ($statement =~ m/^agg_simple/s)
+		    {
+			# A compiled agg_simple is essentially a case of top code.
+			$statement = unescape($statement);
+			my $finished_code = gen_agg_simple($statement);
+			$key = i_before($code_ref, $orig, $finished_code, $wrap_top);
+		    }
+		    else
+		    {
+			$statement = unescape($statement);
+			$key = i_before($code_ref, $orig, $statement, 0);
+		    }
+		}
+	    }
+	    if (! $parse_me)
+	    {
+		$go_flag = 0;
+		$code_ref->{$orig}[0] = $parse_me;
+		$code_ref->{$orig}[1] = $wrap_none;
+	    }
+	    elsif ($parse_me eq $temp)
+	    {
+		$go_flag = 0;
+		$code_ref->{$orig}[0] = $parse_me;
+		#write_log("parse error in:$code_ref->{$orig}[0]\nnear:$parse_me");
+		#exit(1);
+	    }
+	    #delete($code_ref->{$orig});
+	    #$code_ref->{$orig}[1] = $wrap_delete;
+	}
+    }
+
+    if (0)
+    {
+	foreach my $key (sort(keys(%{$code_ref})))
+	{
+	    print "$key:$code_ref->{$key}[1] $code_ref->{$key}[0]\n\n";
+	}
+	exit();
+    }
+
+    # see initdeft() for deft_func().
+    # make sure we have something in the form of a subroutine
+    # call before we test it as a subroutine name.
+    # turn escaped strings back into original form.
+    # naive $line = decode_string($line);
+    #
+    # in case you were wondering... deft subroutine can't assign a 
+    # return value to a lvalue. Return values from deft subroutines
+    # is a very bad idea, so not supporting it is a good thing.
+    # anchoring the regex to the beginning of the line precludes
+    # assigning return values. aren't you glad to know this?
+
+    foreach my $key (keys(%{$code_ref}))
+    {
+	if ($code_ref->{$key}[1] == $wrap_perl)
+	{
+	    next;
+	}
+	$code_ref->{$key}[0] =~ s/^\s+//; # trim leading whitespace
+	if ($code_ref->{$key}[0] =~ m/(^\&[a-za-z0-9_]+)|(^[a-za-z0-9_]+\()/)
+	{
+	    my $sub_name = $code_ref->{$key}[0];
+	    $sub_name =~ s/.*?(\w+).*/$1/s;
+	    if (exists($deft_func{$sub_name}))
+	    {
+		$code_ref->{$key}[1] = $wrap_top;
+	    }
+	    elsif (exists($is_dsub{$sub_name}) || $sub_name eq 'call_deft')
+	    {
+		i_after($code_ref, $key, "garbage_collection();", $wrap_top);
+		$code_ref->{$key}[1] = $wrap_dsub;
+	    }
+	}
+	$code_ref->{$key}[0] =~ s/([\"\'\`\/])(.*?)\1/$1.&decode_string($2).$1/ge;
+    }
+
+    if (0)
+    {
+	foreach my $key (sort(keys(%{$code_ref})))
+	{
+	    print "$key:$code_ref->{$key}[1] $code_ref->{$key}[0]\n\n";
+	}
+	#exit();
+    }
+    # Don't return.
+    # We operated directly on the hash referred to by $code_ref.
+}
+
+
+# Noah's powerful get_block state machine. 
+
+# Get code blocks.
+# Remove comments.
+# Properly parse quoted stuff.
+#
+# Note 1
+# Anonymous blocks not supported. 
+# Shebang, pragmas, and code outside blocks
+# are silently ignored, and silently deleted.
+# Code outside blocks cannot be executed, so silently ignoring
+# it is not (technically speaking) a problem.
+# Code outside the last block is a syntax error.
+# Last character of file (requires are postfixed) must be "}".
+# Some syntax errors will produce unexpected results.
+# Regexs require the leading m, s, or tr.
+
+sub get_block
+{
+    my $all = $_[0];
+
+    my %bq;
+    @{$bq{block}} = (["\{", "\}"]);
+
+  @{$bq{quote}} =
+      (["\\\"","\\\'","\\\`","s\\/",               "tr\\/",            "m\\/","qw\\\(","qr\\\("],
+       ["\\\"","\\\'","\\\`","\\/.*?(?<!\\\\)\\\/","\\/.*?(?<!\\\\)\\/","\\/","\\\)",  "\\\)"]);
+
+    @{$bq{comment}} = (["\#"],["\n"]);
+    
+    # "seeking block close" is looking block open or block close or open quote (including comments)
+    # "seeking block" is look for block open or open quote (including comments)
+
+    my @mode;
+    push @mode , "seeking block";
+    my $block_count = 0;
+    my $accumulate = "";
+    my $block = "seeking block close";
+    while($mode[0] ne "end")
+    {
+	my $reg;
+	if ($mode[0] eq "seeking block")
+	{
+	    # obvious.
+	    $reg = join("|", map {"(?<!\\\\)$_"} ( $bq{block}[0][0], @{$bq{quote}[0]}, @{$bq{comment}[0]}));
+	}
+	elsif ($mode[0] =~ m/$block/)
+	{
+	    # in the middle of parsing a block.
+	    $reg = join("|", map {"(?<!\\\\)$_"} (@{$bq{block}[0]}, @{$bq{quote}[0]}, @{$bq{comment}[0]}));
+	}
+	elsif ( $mode[1] eq "comment" )
+	{
+	    # parsing comment, not a block
+	    $reg = "(?<!\\\\)$bq{comment}[1][$mode[0]]";
+	}
+	else
+	{
+	    # parsing string, not a block
+	    $reg = "(?<!\\\\)$bq{quote}[1][$mode[0]]";
+	}
+	my $cap;
+	if ($all =~ m/(.*?(?:$reg))/s)
+	{
+	    $cap = $1;
+	}
+
+	#print "r:.$reg. bc:$block_count\n";
+	#print "a:" . substr($all,0,40). "\n";
+	#print "c:$cap\n";
+
+	if ($mode[0] =~ /^\d+$/)
+	{
+	    # in a quoted string or a comment
+	    if ($mode[1] eq "comment")
+	    {
+		# comment
+		unshift(@mode, $mode[2]);
+	    }
+	    else
+	    {
+		# quote
+		unshift(@mode, $mode[1]);
+	    }
+	}
+	elsif ($cap =~ m/$bq{block}[0][0]$/)
+	{
+	    # found block open
+	    $block_count++;
+	    unshift @mode, $block;
+	}
+	elsif ($cap =~ m/$bq{block}[0][1]$/)
+	{
+	    # found block close
+	    $block_count--;
+	    if ($block_count == 0)
+	    {
+		unshift(@mode, "end");
+	    }
+	    else
+	    {
+		unshift(@mode, $block);
+	    }
+	}
+	else
+	{
+	    # found quote open, detetmine quote close regex
+	    foreach my $anchor (0..$#{$bq{quote}[0]})
+	    {
+		if ($cap =~ m/$bq{quote}[0][$anchor]$/)
+		{
+		    unshift @mode, $anchor;
+		    last;
+		}
+	    }
+	    if ($mode[0] !~ /^\d+$/)
+	    {
+		unshift @mode , "comment";
+		foreach my $anchor (0..$#{$bq{comment}[0]})
+		{
+		    if ($cap =~ m/$bq{comment}[0][$anchor]$/)
+		    {
+			unshift @mode, $anchor;
+			last;
+		    }
+		}
+	    }
+	}
+
+	#print "@mode[0..3]\n";
+	#print "eoc\n";
+
+	if ($mode[2] ne "comment")
+	{
+	    if ($mode[1] =~ /^\d$/)
+	    {
+		my $temp = $cap;
+		my $c_var = chop($temp);
+		$temp = encode_string($temp) . $c_var;
+		$accumulate .= $temp;
+	    }
+	    else
+	    {
+		$accumulate .= $cap;
+	    }
+	}
+	else
+	{
+	    $accumulate =~ s/$bq{comment}[0][$mode[1]]$//;
+	}
+	my $check_all = length($all);
+	$all =~ s/\Q$cap\E//;
+	if ($check_all == length($all))
+	{
+	    unshift(@mode, "end");
+	    # Noah: is this an error?
+	    #my $temp = join(', ', @mode);
+	    #write_log("Parse error:$temp\n.$all.\n.$cap.");
+	}
+    }
+    
+    return ($accumulate, $all);
+
+    # return (substr($all, 0, $finish+1), substr($all, $finish+1));
+}
+
+
+sub gen_code_core
+{
+    my $sub_name = $_[0];
+    my @code = @{$_[1]};
+    my $output;
+
+    for(my $xx = 0; $xx<= $#code; $xx++)
+    {
+	my $item = $code[$xx];
+	# $output .= "\n#" . \@code . " $xx \n";
+	if ($xx == 0)
+	{
+	    if ($sub_name =~ m/$main_str/)
+	    {
+	    }
+ 	    elsif ($sub_name !~ m/:/)
+	    {
+		if ($xx < $#code)
+		{
+		    $output .= "    my \$prev_out = next_stream();\n";
+		    $output .= "    \$::out_stream = \$prev_out;\n";
+		}
+		else
+		{
+		    $output .= "    \$::out_stream = \$out;\n";
+		}
+	    }
+	}
+	elsif ($xx == $#code)
+	{
+	    if ($sub_name =~ m/$main_str/)
+	    {
+	    }
+	    else
+	    {
+		$output .= "    \$::in_stream = \$prev_out;\n";
+		$output .= "    \$::out_stream = \$out;\n";
+	    }
+	}
+	else
+	{
+	    $output .= "    \$::in_stream = \$prev_out;\n";
+	    $output .= "    \$prev_out = next_stream();\n";
+	    $output .= "    \$::out_stream = \$prev_out;\n";
+	    
+	}
+	
+
+# 	if ($item =~ m/call_deft/)
+# 	{
+# 	    print "$sub_name\n$item\n";
+# 	}
+	    
+	
+	if ($item =~ m/^call_deft\(\"(.*)\"/)
+	{
+	    $output .= "    set_context(\"\", \$::in_stream, \$::out_stream, \"\");\n";
+	    $output .= "    push_context();\n";
+	    $output .= "    $1();\n\n";
+	}
+	elsif ($item =~ m/^agg_simple\(\"(.*)\"[,\s]+\"(.*)\"/s)
+	{
+	    $output .= gen_agg_simple($1,$2);
+	}
+	else
+	{
+	    $item =~ s/\n/\n    /sg;
+	    $output .= "# ". \@code . " $xx\n";
+	    $output .= "    $item\n\n";
+	}
+    }
+    return $output;
+}
+
+
+	    # no if_simple or agg_simple code here
+	    #if ($prev_type != $wrap_start)
+	    #{
+	    # Not first lines
+	    #$code_ref->{$key}[0] .= "    \$::in_stream = \$prev_out;\n";
+	    #}
+
+
+
+    while($flag)
+    {
+	$finish = index($all, "\}",$start+$offset);
+	my $check_str = substr($all, $start, ($finish-$start)+1);
+	my $rcurly = 0;
+	my $lcurly = 0;
+	while($check_str =~ m/\{/g)
+	{
+	    $lcurly++;
+	}
+	while($check_str =~ m/\}/g)
+	{
+	    $rcurly++;
+	}
+	if ($lcurly != $rcurly)
+	{
+	    $offset = length($check_str);
+	}
+	else
+	{
+	    $flag = 0;
+	}
+    }
+    return (substr($all, 0, $finish+1), substr($all, $finish+1));
+
+
+
+
+
+    my %left_cq;
+    my %right_cq;
+    $left_cq{"\""} = '"';
+    $left_cq{"\'"} = "\'";
+    $left_cq{"\`"} = '`';
+    $left_cq{"\/"} = "\/";
+    $left_cq{"s\/"} = '/.*?(?<!\\\\)/';
+    $left_cq{"tr\/"} = $left_cq{"s\/"};
+
+    $right_cq{"\""} = '"';
+    $right_cq{"\'"} = "\'";
+    $right_cq{"\`"} = '`';
+    $right_cq{"\/"} = "\/";
+    $right_cq{"s\/"} = $right_cq{"\/"};
+    $right_cq{"tr\/"} = $right_cq{"\/"};
+
+    $all_lines =~ s/(?<!\\)(tr\/|s\/|\/|\'|\`|\")(.*?)(?<!\\)$left_cq{\1}/$1.&CGI::escape($2).$right_cq{$1}/sge;
+
+
+
+
+sub gen_else_x
+{
+    my $code_ref = $_[0];
+    my $depth = 0;
+    # start at zero, end one short because we check $xx+1.
+    for(my $xx = 0; $xx < $#{$code_ref}; $xx++)
+    {
+	if ($code_ref->[$xx][1] == $wrap_else)
+	{
+	    # $code_ref->[$xx][1] = $wrap_delete;
+
+	    # Next line better be a \{
+	    my $temp = '
+# else clause?
+my $prev_out = $false_stream;
+my $out = $final_stream;';
+	    
+	    $code_ref->[$xx][0] .= $temp;
+	    # $code_ref->[$xx+1][1] = $wrap_top;
+	    $xx++;
+	}
+    }
+}
+
+
+
+my $ife_fmt = '{
+# if-else
+# ? my $final_stream = next_stream();
+my $final_stream = $::out_stream;
+my $true_stream = next_stream();
+my $false_stream = next_stream();
+my $run_once = 1;
+while(unwind() || \$run_once)
+{
+\$run_once = 0;
+%s
+if (%s)
+{
+\$::out_stream = \$true_stream;
+}
+else
+{
+\$::out_stream = \$false_stream;
+}
+%s
+rewind();
+}';
+
+
+sub gen_if_else_unused
+{
+    my $code_ref = $_[0];
+    my $depth = 0;
+    # start at zero, end one short because we check $xx+1.
+    for(my $xx = 0; $xx < $#{$code_ref}; $xx++)
+    {
+	if ($code_ref->[$xx][1] == $wrap_if_else ||
+	    $code_ref->[$xx][1] == $wrap_elsif_else)
+	{
+	    # $code_ref->[$xx+1][1] = $wrap_delete; # Next line better be a \{
+
+	    my $if_expression;
+	    #my $source;
+	    if ($code_ref->[$xx][0] =~ m/if\s*\((.*?)\)/) # \s*(\{.*\})/s)
+	    {
+		$if_expression = $1;
+		# $source = $2;
+	    }
+	    (my $gv, my $sv) = gen_varlist($if_expression);
+
+	    # Need opening { for entire if-else
+	    my $gen_cond .= sprintf($ife_fmt, $gv, $if_expression, $sv);
+	    
+	    my $next_line = '{
+# if-else true clause
+my $prev_out = $true_stream;
+my $out = $final_stream;
+';
+
+	    $code_ref->[$xx][0] = $gen_cond;
+	}
+    }
+}
+
+
+
+# Called from load_states_perl.pl
+# Based on getmain() below. Parses Perl source, putting each sub into an
+# array element, and returning the array.
+
+sub subs_to_list_perl
+{
+    my $all = $_[0];
+    my %state_hash;
+    
+    my @tmplist;
+    my @lines = split('\n', $all);
+    
+    my $flag;
+    my $xx = 0;
+
+    my $which_sub;
+    my $tmp;
+    #
+    # Use @lines, not $#lines
+    #
+    while(@lines)
+    {
+	my $inner_complete = 1;
+	undef(@tmplist);
+	$tmp = shift(@lines);
+	#
+	# Read  lines until a sub start, by not setting $inner_complete to zero
+	# until we're ready to go inside a subroutine.
+	#
+	if ($tmp =~ s/.*?(sub\s+.*)//)
+	{
+	    $which_sub = $1;
+	    $inner_complete = 0;
+	    # print "w:$which_sub\n";
+	}
+	$flag = 1;
+	push(@tmplist, $which_sub);
+	while(!$inner_complete)
+	{
+	    $tmp = shift(@lines);
+	    #
+	    # Find # that don't have $ before them.
+	    # Remove all comments, but not all $#vars.
+	    # ?<! zero width, backwards, negative assertion.
+	    #
+	    $tmp =~ s/(?<!\$)\#.*//;
+	    if ($flag) # || ($tmp =~ m/$which_sub/))
+	    {
+		while ($tmp =~ m/\{/g)
+		{
+		    $xx++;
+		}
+		# $flag = 1;
+		if (!$xx)
+		{
+		    next;
+		}
+#  		if ($flag==1 && $xx==1)
+#  		{
+#  		    $tmp =~ s/\{//;
+#  		    $flag = 2;
+#  		}
+		while ($tmp =~ m/\}/g)
+		{
+		    $xx--;
+		}
+ 		if ($flag!=0 && $xx==0)
+ 		{
+ 		    # $tmp =~ s/\}//;
+ 		    $flag = 0;
+ 		}
+		if ($tmp =~ m/\S/)
+		{
+		    push(@tmplist, $tmp);
+		}		
+		if (!$flag)
+		{
+		    my $full_sub = join("\n", @tmplist);
+		    if ($full_sub =~ m/sub\s+(.*)/)
+		    {
+			my $name = $1;
+			if (!exists($state_hash{$name}))
+			{
+			    $state_hash{$name} = $full_sub;
+			    # print "n:$name\nf:$full_sub\n\n";
+			    $inner_complete = 1;
+			}
+			else
+			{
+			    die "Duplicate sub name $name for $full_sub\n";
+			}
+		    }
+		    else
+		    {
+			die "Can't get sub name for $full_sub\n";
+		    }
+		}
+	    }
+	}
+    }
+    return \%state_hash;
+}
+sub create_family
+{
+    my $dbh = $_[0];
+    my $all_lines = $_[1];
+
+    my $code;
+    my $out_stream;
+    my @ancestor_streams; # out streams of all the ancestors.
+
+    #
+    # We'll need peer ancestors if there is more than one line of code.
+    #
+    # get main: and all the lines of code in main:
+    # getmain() is rather simple minded about {} pairs. A string "{" will fool it.
+    #
+
+    my $need_peers = 0; 
+    my @main = getmain($all_lines, "main:"); 
+    my @tmplist;
+
+    # my $last_coderef = pop(@main);
+    #my $last_coderef = 0; # essentially 
+
+    my $in_stream = sql_new_stream_id($dbh);
+
+    push(@ancestor_streams, $in_stream);
+
+    if ($#main >= 0)
+    {
+	$need_peers = 1;
+    }
+
+    my $subname;
+    foreach my $line (@main)
+    {
+	# See initdeft() for deft_func(). Update when new functions are added.
+	$subname = $line;
+	$subname =~ s/.*?(\w+).*/$1/;
+	if (exists($deft_func{$subname}))
+	{
+	    $code = "_$line";
+	}
+	elsif ($subname)
+	{
+	    @tmplist = getmain($all_lines, "sub\\s+$subname");
+	    $code = join("\n", @tmplist);
+	}
+	$out_stream = sql_new_stream_id($dbh);
+	#
+	# New streams don't need to know about fields
+	# Next in stream is ancestor's out stream.
+	# 
+
+	sql_new_ancestor($dbh, $in_stream, $out_stream, $code);
+	push(@ancestor_streams, $out_stream);
+	$in_stream = $out_stream;
+    }
+#     if (0)
+#     {
+# 	$subname = $last_coderef;
+# 	$subname =~ s/.*?(\w+).*/$1/;
+# 	if (exists($deft_func{$subname}))
+# 	{
+# 	    $last_coderef = "_$last_coderef";
+# 	}
+# 	elsif ($subname)
+# 	{
+# 	    @tmplist = &getmain($all_lines, "sub\\s+$subname");
+# 	    $last_coderef =  join("\n", @tmplist);
+# 	}
+#     }
+    $dbh->commit();
+    return @ancestor_streams;
+}
+#
+# Not used. See the guts of deft.pl, and some of deftd.pl.
+# 
+sub run_core_mp
+{
+    my $dbh = $_[0];
+    my $all_lines = $_[1];
+    my $to_node_fk = $_[2];
+
+    my @ancestor_streams = create_family($dbh, $all_lines);
+
+    #
+    # Assume eenv is already initialized. 
+    # Make any updates to eenv, then rewind so there is one starting record
+    # in the stream.
+    # 
+    # Save state info e.g. next node 
+    # Put into eenv for rendering since it needs to go into templates.
+    #
+
+    if (defined($to_node_fk))
+    {
+	set_eenv("next_node", $to_node_fk)
+    }
+    set_eenv("_return", 1);
+
+    $::out_stream = $ancestor_streams[0];
+    rewind();
+
+    $dbh->commit();
+
+    my $first_pass = 1;
+
+    for(my $xx = 1; $xx <= $#ancestor_streams; $xx++)
+    {
+	my $out_stream = $ancestor_streams[$xx];
+	$::out_stream = $out_stream;
+	($::in_stream, my $coderef) = sql_get_ancestor($dbh, $out_stream);
+
+ 	$::rec_avail{$out_stream} = -1;
+	
+	# 
+	# Need to make no strict for the eval, and maybe for the whole loop
+	# If any subroutines are called that also have to be no strict,
+	# you'll have to set it inside those subs.
+	# Note that checking $@ works for some errors, but the perlfunc man page
+	# says that it won't work for everything. 
+	# 
+	# If the coderef starts with an underscore, it is an internal deft func.
+	#
+	{ # begin no strict block
+	    no strict;
+	    if ($coderef =~ m/^\_\s*(.*)/) 
+	    {
+		#
+		# internal deft API func
+		#
+		no strict;
+		my $line = $1;
+		eval($line);
+		if ($@)
+		{
+		    die "$@\ndeft_st.pl err:$line\n";
+		}
+	    }
+	    else
+	    {
+		#
+		# user written deft subroutines
+		#
+		while(unwind() && restorevars())
+		{
+		    eval($coderef);
+		    if ($@)
+		    {
+			die "$@\nc:$coderef\n";
+		    }
+		    getvars($coderef);
+		    rewind();
+		}
+	    }
+	} # end no strict block
+
+	#
+	# Mark out stream as completed.
+	# This is almost certainly wrong. Things have changed.
+	sql_inactivate_ancestor($dbh, $out_stream);
+	$dbh->commit();
+	$first_pass = 0;
+    }
+    
+    #
+    # unwind the stream, leaving eenv with the last record's values.
+    # Maybe later the stream should be crushed, although
+    # eenv needs to be left in a valid state with the proper
+    # _return value intact.
+    #
+
+    $::in_stream = $ancestor_streams[$#ancestor_streams];
+    my $last_ref_eenv;
+    while(unwind())
+    {
+	$last_ref_eenv = get_ref_eenv();
+    }
+    set_ref_eenv($last_ref_eenv);
+
+    sql_duo_clean($dbh, \@ancestor_streams, 1);
+    $dbh->commit();
+    return get_eenv("_return");
+}
+#
+# Needs to be renamed. It gets a whole subroutine $_[0]
+#
+sub getmain
+{
+    my $all = $_[0];
+    my $which_sub = $_[1];
+    
+    my @tmplist;
+    my @lines = split(';', $all);
+    
+    #
+    # Check for the subroutine we've been asked to find.
+    # It may be missing, or the developer may have forgotten
+    # to init %deft_func for a new internal function.
+    #
+    if ($all !~ m/$which_sub/)
+    {
+	$which_sub =~ s/^(.*)\+//;
+	write_log("Parse error: $which_sub is not a subroutine. all:$all");
+	exit(1);
+    }
+
+    my $flag;
+    my $xx = 0;
+    foreach my $tmp (@lines)
+    {
+	$tmp =~ s/(?<!\$)\#.*//;               # remove all comments
+	if ($flag || ($tmp =~ m/$which_sub/))  # loop while still the same sub.
+	{
+	    while ($tmp =~ m/\{/g)  # Start counting when we hit left curly
+	    {
+		$xx++;              # increment when left curly
+	    }
+	    $flag = 1;
+	    if (!$xx)               # skip leading blank lines
+	    {
+		next;
+	    }
+	    if ($flag==1 && $xx==1) # 1 means 1st left curly, remove 1st left curly, 2 means inside block
+	    {
+		$tmp =~ s/\{//;     # remove first left curly
+		$flag = 2;
+	    }
+	    while ($tmp =~ m/\}/g)  # dec xx when right curly  (underruns detected?)
+	    {
+		$xx--;
+	    }
+	    if ($flag!=0 && $xx==0) # flag !zero means inside block, xx == zero means last right curly
+	    {
+		$tmp =~ s/\}//;     # remove the last right curly
+		$flag = 0;
+	    }
+	    if ($tmp =~ m/\S/)      # if the line is just whitespace...
+	    {
+		push(@tmplist, $tmp); # Keep blank lines inside the block
+	    }		
+	    if (!$flag)             # block is complete, return.
+	    {
+		return @tmplist;
+	    }
+	}
+    }
+}
+# 
+# return true if end of data
+#
+sub eod
+{
+    return ($::curr_record > $::record_number);
+}
+sub need_db
+{
+    return (! $::record_number);
+}
+# 2005-01-08 This hasn't been used in a loooong time.
+sub new_connection
+{
+    my %vars = config($_[0]); # see config.pl
+    my $dbh;
+    my $dbargs = {AutoCommit => 0, PrintError => 1};
+    
+    my $connect_string  = "dbi:$vars{dbms}:dbname=$vars{db_name};host=$vars{db_host};port=$vars{db_port}";
+    $dbh =  DBI->connect($connect_string,
+                         $vars{db_user},
+                         $vars{db_password},
+                         $dbargs);
+    if ($DBI::err)
+    {
+        die "Couldn't connect to $vars{db_name}\n connect string: $connect_string\n$DBI::errstr";
+    }
+    
+    return $dbh;
+}
+# 2005-01-08 This hasn't been used in a loooong time.
+	
+sub munge_deft_func
+{
+    my $line = $_[0];
+    $line =~ m/&?(\w*)\((.*)\)?/;
+    
+    my $func = $1;
+    my $argstr = $2;
+    my @tmp;
+    my @args = ('');
+    while  ($argstr =~ s/(.*?)(?:((?<!\\)[\'\"])|\)(?=;))//)
+    {
+	push @tmp, $1;
+	if ($2)
+	{
+	    my $char = $2;
+	    $argstr =~ s/(.*?)(?<!\\)$char//;
+	    push @tmp, $1;
+	}
+    }
+    foreach my $ii (0..$#tmp)
+    {
+	if ($ii % 2)
+	{
+	    $args[$#args] .= $tmp[$ii];
+	}
+	else
+	{
+	    my $jj = 0;
+	    while ($tmp[$ii] =~ s/(.*?),//)
+	    {
+		if ($jj)
+		{
+		    push @args, $1;
+		}
+		else 
+		{
+		    $args[$#args] .= $1;
+		}
+		$jj++;
+	    }
+	    if ($jj)
+	    {
+		push @args, $tmp[$ii];
+	    }
+	    else
+	    {
+		$args[$#args] .= $tmp[$ii];
+	    }
+	}
+    }
+    if (! exists($deft_func{$func}))
+    {
+	write_log("f:$func has no coderef");
+    }
+    my $funcref = $deft_func{$func};
+    write_log("f:$func fr:$funcref");
+    #foreach my $arg (@args)
+    #{
+    #write_log("mdf arg:$arg");
+    #}
+    return ($deft_func{$func}, @args);
+}
+
+
+my $rw_rc= 1;
+sub sql_rewind_core
+{
+    my $q_name = "sql_rewind_core";
+    my $dbh = $_[0];
+    my $st_id = $_[1]; # out_stream
+    my %rec = %{$_[2]};
+    
+    my $sql = "insert into stream_column
+		(out_stream_fk, os_row, col_name, col_value) values
+		($st_id       , ?     , ?       , ?)";
+
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    
+    my$good_flag = 0;
+
+    foreach my $col (keys(%rec))
+    {
+	$good_flag = 1;
+	$sth->bind_param(1,"$st_id $rw_rc");
+	$sth->bind_param(2,$col);
+	if (! defined($rec{$col}))
+	{
+	    #
+	    # Quiet warning in the log about uninitialized strings.
+	    #
+	    $sth->bind_param(3, "", { pg_type => DBD::Pg::PG_BYTEA });
+	}
+	else
+	{
+	    my $val = $rec{$col};
+	    $sth->bind_param(3, "$val", { pg_type => DBD::Pg::PG_BYTEA });
+	}
+	$sth->execute();
+    }
+    $sth->finish();
+    if ($good_flag)
+    {
+	$rw_rc++;
+    }
+    else
+    {
+	write_log("empty row s:$st_id r:$rw_rc");
+    }
+}
+
+# move records from read to output.
+sub sql_update_stream
+{
+    my $q_name = "sql_update_stream";
+    my $dbh = $_[0];
+    my $aid = $_[1]; # read stream (intermediate)
+    my $out_stream = $_[2];  # output stream
+    my $sql;
+    my $sth;
+    my $rows;
+    
+    $sql = "update stream_row set st_id_fk=$out_stream where st_id_fk=$read_stream";
+    $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $rows = $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$sql\n$DBI::errstr\n"; }
+    if ($rows > 0)
+    {
+	print "upd:$rows\n";
+    }
+}
+x
+
+my $uw_rc = 1; # row count, starting with one.
+sub sql_unwind
+{
+    my $q_name = "sql_unwind";
+    my $dbh = $_[0];
+    my $in_stream = $_[1];
+
+    #
+    # stream columns have two extra columns. os_row is a key composed of
+    # the "out_stream row_index". This column is indexed, and lookups are very fast.
+    # The other column is out_stream, and is used elsewhere to clean up 
+    # a stream (e.g. delete).
+    #
+    # os_row is like "1 1", "1 2", "1 3" ... "1 -1". The -1 marks the row AFTER
+    # the last row. The -1 row isn't data, just a marker.
+    # sql_rewind numbers all rows consecutively, with -1 after the last.
+    # 
+    # Keep trying to get a row as long as we didn't get one and $uw_rc isn't -1.
+    # When we get a row, return (one way or another).
+    # If we get a row and $uw_rc is -1, this is the last row, so return zero.
+    #
+    my $sql = "select col_name,col_value from stream_column where os_row=?";
+
+    my $rows = 0;
+    my $active = 1;
+    my $last_flag = 1;
+    #while ($rows == 0 && $active)
+    while($active)
+    {
+	#
+	# It may gain a little speed (?) by using the return
+	# value of execute. However, it returns 0E0 instead of zero.
+	# It turns out that 0E0 is zero, but isn't ! (not). Cool, eh? 
+	#
+	my $normal_os_row = "$in_stream $uw_rc";
+	my $end_os_row = "$in_stream $uw_rc";
+	my $sth = $dbh->prepare($sql);
+	if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+	$rows = $sth->execute($normal_os_row);
+	if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+	if ($rows > 0)
+	{
+	    while((my $col, my $value) = $sth->fetchrow_array())
+	    {
+		set_eenv($col, $value);
+	    }
+	    $uw_rc++;
+	    $active = 0;    # got a row
+	    $last_flag = 0; # no extra iteration
+	}
+	else
+	{
+	    $active = sql_stream_active($dbh, $in_stream);
+	}
+	if (! $active && $last_flag)
+	{
+	    $last_flag = 0; # now is last iteration
+	    $active = 1;    # one extra iteration
+	}
+	$sth->finish();
+    }
+
+    if ($rows == 0)
+    {
+	clear_eenv();
+	return (0);
+    }
+    return (1);
+}
+
+# 2005-01-06
+sub create_family_simple
+{
+    my $all_lines = $_[0];
+    my $code;
+    my @ancestor_code; # list of code each ancestor runs
+
+    #
+    # We'll need peer ancestors if there is more than one line of code.
+    #
+    # get main: and all the lines of code in main:
+    # getmain() is rather simple minded about {} pairs. A string "{" will fool it.
+    #
+
+    my $need_peers = 0; 
+    my @main = getmain($all_lines, "main:"); 
+    my @tmplist;
+
+    if ($#main >= 0)
+    {
+	$need_peers = 1;
+    }
+
+    my $subname;
+    my $inline_flag = 0;
+    foreach my $line (@main)
+    {
+	#
+	# See initdeft() for deft_func(). Update when new functions are added.
+	# Make sure we have a subroutine call before we test it as 
+	# a subroutine name.
+	#
+
+	if ($line =~ m/(^\s*\&[a-zA-Z0-9_]+)|(^\s*[a-zA-Z0-9_]+\()/)
+	{
+	    $subname = $line;
+	    $subname =~ s/.*?(\w+).*/$1/;
+	    if (exists($deft_func{$subname}))
+	    {
+		if ($inline_flag)
+		{
+		    $inline_flag = 0;
+		}
+		$code = "_$line";
+		push(@ancestor_code, $code);
+	    }
+	    elsif ($all_lines =~ m/sub\s+$subname/)
+	    {
+		if ($inline_flag)
+		{
+		    $inline_flag = 0;
+		}
+		@tmplist = getmain($all_lines, "sub\\s+$subname");
+		$code = join("\n", @tmplist);
+		push(@ancestor_code, $code);
+	    }
+	}
+	else
+	{
+	    # inline perl here.
+	    if (! $inline_flag)
+	    {
+		push(@ancestor_code, "");
+		$inline_flag = 1;
+	    }
+	    $ancestor_code[$#ancestor_code] .= $line;
+	}
+    }
+    return @ancestor_code;
+}
+
+
+# 2005-01-04 crappy code to support bytea
+# See the DBD::Pg man page.
+
+    if (0)
+    {
+	#
+	# Enable this if you need more info about SQL data types.
+	# te_code is binary (Postgres bytea) so we have to get DBI to 
+	# coerce the string into the right data type, otherwise we get
+	# ERROR:  Unterminated quoted string
+	# These seem to be applicable types. Not knowing what they are
+	# I chose the simplest one.
+	# SQL_LONGVARBINARY=-4
+	# SQL_VARBINARY=-3
+	# SQL_BINARY=-2
+	#
+	no strict;
+	foreach (@{ $DBI::EXPORT_TAGS{sql_types} })
+	{
+	    printf "%s=%d\n", $_, &{"DBI::$_"}();
+	}
+    }
+
+
+# 2004-12-27 Changed then deleted.
+# Side effect: changes %lv_hash.
+# 
+sub prep_inline
+{
+    my $type = $_[0];     # "first", "middle", "last"
+    my $line = $_[1];     # The line or block of code
+    my $return_value;
+
+    if ($type eq 'first')
+    {
+	$return_value = "while(unwind()) \{\nrestorevars();\n$line";
+    }
+    elsif ($type eq 'middle')
+    {
+	$return_value = "\n$line";
+    }
+    elsif ($type eq 'last')
+    {
+	$return_value .= "\nset_all_eenv();\nrewind(); }";
+    }
+    return $return_value;
+}
+
+# 2004-12-27 Rewritten.
+# This doesn't really work. It misses the right side of regexes,
+# ++, --, and anything else which doesn't have an =.
+# It is also far more complex than necessary for just getting lvalues
+# from subroutine calls. Write a new one when we implement new where blocks.
+# Compile-time sub which returns all the lvalue scalars
+# in the code param. Used by compile_deft() to know which
+# vars to call set_eenv() for in inline Perl.
+# 
+sub getvars
+{
+    my $code = $_[0];
+    my $vname;
+    my @left_sides;
+    my %var_hash;
+    
+    if (1)
+    {
+	# Tom's simple regexes. Works, but leaves some extra junk
+	# in the left sides.
+	while($code =~ m/(.*?)=.*?;/sg)
+	{
+	    push(@left_sides,$1);
+	}
+	foreach my $item (@left_sides)
+	{
+	    $item =~ s/\$[^\$]*\{//sg;
+	}
+    }
+    else
+    {
+        # Noah's more complex regex. Only one loop, cleaner left sides.
+	# Fails on "..}elsif ($var..." Something to do with no whitespace
+	# between } and elsif.
+	#while($code =~ m/[^\;]*(?<=\s)(?:for|foreach|if|else|elsif|while)\b[^\;]*\{|(.*?)=.*?;/sg)
+	while($code =~ m/[\;\}]?\s*(?:for|foreach|if|else|elsif|while)\b[^\;]*\{|(.*?)=.*?;/sg)
+	{
+	    push(@left_sides,$1);
+	}
+    }
+    # both methods above require a second pass through the left sides
+    foreach my $item (@left_sides)
+    {
+	while ($item =~ m/\$([a-za-z_][\w\d]*)(?![\[\]\{\}])\b/sg)
+	{
+	    $var_hash{$1} = 1;
+	}
+    }
+    my @var_array = keys(%var_hash);
+    return \@var_array;
+}
+
+2004-12-26 duplicate code
+sub sql_get_gr_pk
+{
+    my $q_name = "sql_get_gr_pk";
+    my $dbh = $_[0];
+    my $graph_name = $_[1];
+    my $logname = $_[2];
+
+    my $sql = "select gr_pk from graph where graph_name=? and
+		du_fk=(select du_pk from deft_users where logname=?)";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $sth->execute($graph_name, $logname);
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+    (my $gr_pk) = $sth->fetchrow_array();
+    return $gr_pk;
+}
+
+
+# 2004-12-14
+# from deftlib.pl sub getvars
+    #
+    # Simple regex also gets vars like $1
+    # while ($tmp =~ m/\$([\w:\d]+)(?!\[|\{)/g)
+    # New regex shouldn't have that problem.
+    #
+    while ($tmp =~ m/\$([a-zA-Z_][\w:\d]*)(?!\[|\{)(?=\s*=)/g)
+    {
+	#
+	# if($$vname) fails when $$vname contains a zero, therefore used defined().
+	# We only match vars in the while that start with a-zA-Z_, and below
+	# we ignore vars whose names contain only 0-9. Noah points out that this
+	# is belt and suspenders. 
+	# 
+	$vname = $1;
+	if (defined($$vname) && $vname !~ m/\d+/)
+	{
+	    set_eenv($vname, $$vname);
+	}
+	else
+	{
+	    clear_var_eenv($vname);
+	}
+    }
+
+
+# 2004-12-19
+	foreach my $var (keys_eenv())
+	{
+	    # $sql =~ s/(?<!\\)\$$var(?=\W|\Z)/get_eenv($var)/esg;
+	    $sql =~ s/(?<!\\)\$$var(?=\b)/get_eenv($var)/esg;
+	}
+# Old sub also removed string "$123" from data. Bad.
+# 	while ($sql =~ m/\$(\w+)/)
+# 	{
+# 	    my $val = get_eenv($1);
+# 	    $sql =~ s/\$(\w+)/$val/s;
+# 	}
+
+    # my @vlist = sort {length($b) <=> length($a)} keys(%hash);
+#     foreach my $var (keys(%hash))
+#     {
+# 	#This fails on last $var if it is at the end of the string.
+# 	#$tsub =~ s/(?<!\\)\$$var(?=\W)/$hash{$var}/sg;
+# 	# This one seems to fix that.
+# 	#$tsub =~ s/(?<!\\)\$$var(?=\W|\Z)/$hash{$var}/sg;
+# 	# Looking at man perlre \b should be \W|\Z
+# 	#$tsub =~ s/(?<!\\)\$$var(?=\b)/$hash{$var}/sg;
+#     }
+
+sub choose_db
+{
+    # Display the db names.
+    my $xx;
+    for($xx=1; $xx<=$#::db_name; $xx++)
+    {
+	$::output .= "$xx $::db_name[$xx]<br>\n";
+    }
+
+    print "Content-type: text/html\n\n";
+    print "<HTML><HEAD><TITLE>Select database</TITLE></HEAD>\n";
+    printf("%s\n", "<BODY BGCOLOR=\"ffffff\">");
+    print "$::output";
+    print "You are logged in as $ENV{REMOTE_USER}\n";
+    print '<form action="' . $::script_name . '" method="post">' . "\n";
+    print "Choose a database to edit: ";
+    print '<input type="text" name="db"><p>' . "\n";
+    print '<input type=submit value="Start edit">' . "\n";
+    print "</form></body></html>\n";
+}
+sub main
+{
+
+}
+
+sub have_db
+{
+    if (exists($ch{db}))
+    {
+	return 1;
+    }
+    return 0;
+}
+
+sub draw_all
+{
+    print "draw_all: this needs to call deft instead\n";
+}
+
+
+sub old_main
+{
+    $::NO_STATE = 1;
+    $::BLANK_STATE = 2;
+    $::DELETE_STATE_1 = 3;
+    $::UPDATE_STATE = 4;
+    $::EDIT_STATE = 5;
+    $::INSERT_STATE = 6;
+    $::NEW_STATE = 7;
+    $::CONTINUE_STATE = 8;
+    $::DELETE_STATE_2 = 9;
+    $::EDIT_NEXT = 10;
+
+    my($record_state);
+    my($insert_before);
+    my($which_record);
+    my($cgi_temp);
+    my($cgi_field_index);
+    my($xx);
+    my($key);
+    my @fields;
+
+    my $query = new CGI();
+    my %in = $query->Vars();
+    my $no_db_flag = 0;
+    if (exists($in{db}))
+    {
+	$::db = $in{db};
+    }
+    else
+    {
+	$no_db_flag = 1;
+	$::db = 1; # config() will change a zero db to 1, so we might as well do it here too.
+    }
+
+    init($::db, \%in);
+
+    if ($::db == 1 && $#::db_name > 1 && $no_db_flag) # if only 1 db, just use it.
+    {
+	choose_db();
+	exit(0);
+    }
+
+    $record_state = $in{record_state};
+
+    if ((exists($in{continue})) || ($in{submit} =~ m/continue/i) )
+    {
+	$record_state = $::CONTINUE_STATE;
+    }
+    if ($in{submit} =~ m/next/i)
+    {
+	$record_state = $::EDIT_NEXT;
+    }
+
+    $insert_before = $in{insert_before};
+    $which_record = $in{record_number};
+    #
+    # crawl through the whole @in array
+    # looking for our fields
+    # and throw the values into the appropriate array element.
+    #
+    $cgi_temp = "";
+    $cgi_field_index = -1;
+
+    if (exists($in{makenew}))
+    {
+	my $review = $in{makenew};
+	delete($in{makenew});
+	my $date = $in{field_0} . "_edit";
+	$review =~ m/<b>(.*?)<\/b>/s;
+	my $wine = $1;
+	my $sth = $::dbh->prepare("insert into reviews (date, wine, review) values (?, ?, ?)");
+	$sth->execute($date, $wine, $review);
+    }
+
+    foreach $key (keys %in)
+    {
+	# 
+	# s is treat string as single line. We may have embedded \n chars
+        # WriteError("$cgi_field_index = $value");
+        # change \n into <p>
+        # octal zero to 037 which is one char less than space
+        # which is decimal 32
+        # I'm pretty sure that at least some browsers put in \012
+        # for the line endings. Hmmm. Wrap may be set to virtual. 
+        #
+        # tr has it's own switches
+        # c (not used here) complement the searchlist
+        # d (not used here) delete found but unreplaced characters.
+        # s Squash duplicate replaced characters.
+        #
+        # $cgi_temp =~ s/\n/newline/sg;
+        # $cgi_temp =~ s/\r/<p>/sg;
+        # Remove any leading or trailing control chars or spaces.
+	my $value = $in{$key};
+	if ($key =~ m/field_(\d+)/s)
+	{
+	    $cgi_temp = $value;
+	    $cgi_field_index = $1;
+	    
+	    $cgi_temp =~ s/\010/010/sg;
+	    #
+	    # jul 16 2002 
+	    # Warning: do not use /s with tr. It is squash, not match \n
+	    #
+	    # \012 (octal) is ^J
+	    # \015 (octal) is ^M is \r
+	    # This works with Mozilla 1.0 and Netscape 4.7x under Linux.
+	    #
+	    $cgi_temp =~ s/\012\015/\n/sg;  # lf cr becomes \n
+	    $cgi_temp =~ s/\015\012/\n/sg;  # cr lf becomes \n
+	    $cgi_temp =~ s/\n\n/<p>/sg;     # 2 \n to make a <p>
+	    $cgi_temp =~ s/\n/<br>/gs;      # one \n becomes <br> 2003-01-27 Tom
+	    $cgi_temp =~ s/[\000-\037]/ /sg; # any remaining control chars become space. Maybe should become \n and move one line up?
+	    
+	    $cgi_temp =~ s/  / /sg;         # multi spaces become single space
+	    
+	    while (ord($cgi_temp) <= 32 &&
+		   length($cgi_temp) > 0)
+	    {
+		$cgi_temp = substr($cgi_temp, 1);
+	    }
+	    while(ord(substr($cgi_temp,length($cgi_temp)-1,1)) <= 32 &&
+		  length($cgi_temp) > 0)
+	    {
+		chop($cgi_temp);
+	    }
+	    $fields[$cgi_field_index] = "$cgi_temp";
+	}
+        elsif ($key =~ m/date_(\d+)/s)
+        {
+            $cgi_field_index = $1;
+            $cgi_temp = string_to_date($value);
+            $fields[$cgi_field_index] = "$cgi_temp";
+        }
+    }
+    
+    #
+    # jul 16 2002
+    # sanity check here?
+    # The HTML form could send back field_0
+    # instead of record_number or whatever it uses.
+    #
+    if (defined($which_record))
+    {
+	$fields[0] = $which_record;
+    }
+    
+    if ($which_record eq "" && $record_state eq "")
+    {
+	return "draw_all";
+    }
+    if ($record_state == $::NEW_STATE)
+    {
+	return "insert";
+    }
+    if ($record_state == $::DELETE_STATE_1) # 3
+    {
+	return "delete_confirm";
+    }
+    if ($record_state == $::DELETE_STATE_2) # 9
+    {
+	return "delete";
+    }
+    if ($record_state == $::UPDATE_STATE)
+    {
+	return "update";
+    }
+    if ($record_state == $::EDIT_STATE)
+    {
+	return "edit";
+    }
+}
+
+sub delete
+{
+    DeleteRecord($which_record);
+    DrawAll(\%in);
+    if ($::usedb == 1)
+    {
+	# We should check the autocommit state.
+	$::dbh->commit; 
+	$::dbh->disconnect;
+    }
+    return 0;
+}
+sub insert
+{
+    ($record_state, $which_record) = InsertRecord(\@fields);
+    $::findme = "0:$which_record";
+    $::findme_encoded = CGI::escape($::findme);
+    if ($::usedb == 1)
+    {
+	# We should check the autocommit state.
+	$::dbh->commit; 
+	$::dbh->disconnect;
+    }
+    return 0;
+}
+sub update
+{
+    UpdateRecord(\@fields);
+    DrawAll(\%in);
+    if ($::usedb == 1)
+    {
+	# We should check the autocommit state.
+	$::dbh->commit; 
+	$::dbh->disconnect;
+    }
+    return 0;
+}
+sub edit
+{
+    #
+    # Insert must come before edit. Insert creates a new blank record, then switches states to edit.
+    #
+    msedit_template($which_record, $record_state);
+    if ($::usedb == 1)
+    {
+	# We should check the autocommit state.
+	$::dbh->commit; 
+	$::dbh->disconnect;
+    }
+    return 0;
+}
+sub continue
+{
+    UpdateRecord(\@fields);
+    $record_state = $::EDIT_STATE;
+    msedit_template($which_record, $record_state);
+    if ($::usedb == 1)
+    {
+	# We should check the autocommit state.
+	$::dbh->commit; 
+	$::dbh->disconnect;
+    }
+    return 0;
+}
+sub edit_next
+{
+    #
+    # Get next before updating since if we change item_order we still probably
+    # want the next that would have come before we changed item_order
+    #
+    my $next_record = determine_next($which_record);
+    UpdateRecord(\@fields);
+    if ($next_record >= 0)
+    {
+	$record_state = $::EDIT_STATE;
+	msedit_template($next_record, $record_state);
+    }
+    else
+    {
+	# Zoikes! Couldn't find next, so go back to the big list.
+	DrawAll(\%in);
+    }
+    if ($::usedb == 1)
+    {
+	# We should check the autocommit state.
+	$::dbh->commit; 
+	$::dbh->disconnect;
+    }
+    return 0;
+}
+sub delete_confirm
+{
+    delete_confirm($which_record);
+    if ($::usedb == 1)
+    {
+	# We should check the autocommit state.
+	$::dbh->commit; 
+	$::dbh->disconnect;
+    }
+    return 0;
+}
+
+sub page_one
+{
+    print "Content-type: text/html\n\n";
+    print "<html><body>page one</body></html>\n";
+}
+
+sub third
+{
+    print "Third runs\n";
+}
+
+
+sub test
+{
+    print "hello world\n";
+    my $var = 1;
+    $var++;
+    print "var is $var\n";
+    return 5;
+}
+sub have_non_zero_arg
+{
+    if ($ARGV[1])
+    {
+	print "argv 1:$ARGV[1]\n";
+	return 1;
+    }
+    return 0;
+}
+sub false
+{
+    return 0;
+}
+sub true
+{
+    return 1;
+}
+sub print_neg
+{
+    print "\nThis is sub print_neg()\nNeg runs\n";
+}
+sub test2
+{
+    print "This is test2\n";
+    print "greetings, earthlings\n";
+    return 4;
+}
+
+
+# 2004-12-09 outmoded by new graph ownership stuff 
+# from machine.pl
+sub sql_node_pk_ok
+{
+    my $q_name = "sql_node_pk_ok";
+    my $dbh = $_[0];
+    my $node_pk = $_[1];
+
+    my $sql = "select node_pk from node where node_pk=$node_pk";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    my $rows = $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+    if ($rows > 0)
+    {
+	return 1;
+    }
+    return 0;
+}
+
+
+# old config.pl.dist
+
+sub config
+{
+    my $conf = $_[0];
+    my %vars;
+    my $hostname = `/bin/hostname`;
+    chomp($hostname);
+
+    if ($conf == 1)
+    {
+	#
+	# config for cars.deft and the demo.dat tab separated
+	# text file as a data source.
+	# 
+	$cwd = "/home/mst3k/public_html/deft";
+	$vars{usedb} = 0;
+	$vars{data_file} = "$cwd/demo.dat";
+	@{$vars{fna}} = ("sequence",     # 0 Column zero is MUST be a unique sequence number
+			 "make",         # 1
+			 "model",        # 2
+			 "displacement", # 3
+			 "units");       # 4
+	%{$vars{fnh}} = create_fnh($vars{fna});
+    }
+    elsif ($conf == 2)
+    {
+	#
+	# This is what a full entry looks like for a database, including
+	# the Defindit classic editing engine.
+	#
+	$cwd = "/home/mst3k/public_html";
+	$vars{contact_email} = 'mst3k@domain.com';
+	$vars{default_findme} = "default";
+	$vars{usedb} = 1;
+
+	# display pages to edit
+	$vars{msdisplay_template} = "$cwd/web_search.html";
+
+	# edit a single record
+	$vars{msedit_template} = "$cwd/web_edit.html";
+
+	# end user search results
+	$vars{msearch_html} = "$cwd/msearch.html";
+
+	$vars{data_file} = "$cwd/pages.dat";
+	$vars{notfound} = "$cwd/notfound.html";
+	@{$vars{fna}} = ("pages_pk",     # 0
+			 "url",         # 1
+			 "title",       # 2
+			 "description", # 3
+			 "keywords");   # 4
+	
+	$vars{dbms} = 'Pg';
+	$vars{db_name} = 'pages';
+	$vars{db_host} = 'localhost';
+	$vars{db_port} = 5432;
+	$vars{db_user} = 'mst3k';
+	$vars{db_password} = 'securepassword';
+    }
+    else
+    {
+	die "Conf:$conf not known\n";
+    }
+    return %vars;
+}
+
+
+sub create_fnh
+{
+    my @fna = @{$_[0]};
+    #
+    # 2003-09-22 Whatever the last col was, add a final col for the rank var.
+    #
+    my $xx;
+    my %fnh;
+    for($xx=0; $xx<=$#fna; $xx++)
+    {
+	$fnh{$fna[$xx]} = $xx;
+    }
+    return %fnh;
+}
+
+
+1;
+
+# 2004-10-04
+From install.txt
+Step 5.
+Go back to being logged in as yourself (a non-root,
+non-postgres user, mst3k for these examples). Create a Postgres user and
+database, and run the SQL for creating the db tables. We have supplied
+some very simple SQL for table creation in bug.sql. The example
+assumes you are creating a Postgres user (not a Linux user)
+'bug_pages'. To create a new user with database creation ability you
+login to psql as user 'postgres' with your Postgres password. Logout
+of psql after creating the new user. After that, run psql as the new
+user. 
+
+psql -U postgres template1
+create user bug_pages with createdb encrypted password 'a_good_password';
+\q
+psql -U bug_pages template1
+create database bug;
+\c bug_pages;
+\i bug.sql
+\q
+
+
+# 2004-09-22
+# 2004-09-22
+sub machine_run_core
+{
+    my $all_lines = $_[0];
+    my $to_node_fk = $_[1];
+    initdeft();
+    # 
+    # pre-parse_simple() is only used by control
+    # It fills in the $::eenv{code} array of strings (each subroutine is one string)
+    #
+    my $last_coderef = pre_parse_simple($all_lines); 
+
+    $::eenv{parent} = $::myhostname;
+    deft_cgi(); # modifies {data}
+    #
+    # Save state info. 
+    # Put into $::eenv{data} for rendering
+    #
+    $::eenv{data}{_next_node} = $to_node_fk;
+
+    print OUT "rc tnf:$to_node_fk\n";
+
+    my $cp_flag = 0;
+    if (scalar($::eenv{code}))
+    {
+	$cp_flag = 1;
+	open_peer(1);
+	put_code(); 
+    }
+    if ($last_coderef =~ m/^\_(.*)/)
+    {
+	# Bug:
+	# If no final output function, this rewinds to stdout
+	#
+	no strict;
+	no_rewind(); # disable rewind just for this final process.
+	my $line = $1;
+	eval($1);
+	if ($@) # Huh?
+	{
+	    die $@;
+	}
+    }
+    else
+    {
+	no strict;
+	my $uflag = unwind();
+	while( restorevars() )
+	{
+	    # print "r:$::eenv{data}{record_number}\n";
+	    eval($last_coderef);
+	    $uflag = unwind();
+	}
+    }
+    if ($cp_flag)
+    {
+	close_peer();
+    }
+    #
+    # No explicit return, then return true.
+    #
+    if (!defined($::eenv{data}{_return}))
+    {
+	print OUT "Undefined return. Returning 1\n";
+	$::eenv{data}{_return} = 1;
+    }
+    print OUT "eer:$::eenv{data}{_return}\n";
+    
+    return $::eenv{data}{_return};
+}
+# 2004-09-22
+#
+# Backward version of rewind that send a code eenv up the chain
+# as opposed to rewinding eenv for the next process down the chain.
+# This also sends up a single record $::eenv{data} which the head 
+# process will read.
+#
+sub put_code
+{
+    if (! (defined($::peer_handle)))
+    {
+	return 0;
+    }
+    my $frozen = freeze(\%::eenv);
+    
+    my $nlcount = 1;
+    while ($frozen =~ /\n/g)
+    {
+	$nlcount++;
+    }
+
+    #
+    # this probably has to be this way
+    #
+    print $::peer_handle "$nlcount\n";
+    my $ofh = select($::peer_handle);
+    $| = 1;
+    select($ofh);
+    print $::peer_handle "$frozen\n";
+    $ofh = select($::peer_handle);
+    $| = 1;
+    select($ofh);
+    return 1;
+}
+
+# 2004-09-22
+# stream reversed version of unwind
+sub get_code
+{
+    my $frozen;
+    my $numbytes;
+    if( $numbytes = <STDIN>)
+    {
+	chomp($numbytes);
+	#write_log("gc nb: $numbytes");
+	while ($numbytes--)
+	{
+	    $frozen .= <STDIN>;
+	}
+	chomp $frozen;
+	#write_log("fr:$frozen");
+	my $href = thaw($frozen);
+	%::eenv = %{$href};
+	return 1;
+    }
+    else
+    {
+	undef(%{$::eenv{data}});
+	return 0;
+    }
+}
+
+# 2004-09-21
+sub sql_clean_up
+{
+    my $q_name = "sql_clean_up";
+    my $dbh = $_[0];
+    my @st_id_list = @{$_[1]};
+
+    my $select_sr_sql = "select sr_pk from stream_row where out_stream_fk=?";
+    
+    my $delete_sr_sql = "delete from stream_row where out_stream_fk=?";
+
+    my $delete_sc_sql = "delete from stream_column where sr_fk=?";
+
+    my $select_sr_sth = $dbh->prepare($select_sr_sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    my $delete_sr_sth = $dbh->prepare($delete_sr_sql);
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+    my $delete_sc_sth = $dbh->prepare($delete_sc_sql);
+    if ($dbh->err()) { die "$q_name 3\n$DBI::errstr\n"; }
+
+    foreach my $out_stream_fk (@st_id_list)
+    {
+	$select_sr_sth->execute($out_stream_fk);
+	if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+	while ((my $sr_pk) = $select_sr_sth->fetchrow_array())
+	{
+	    $delete_sc_sth->execute($sr_pk);
+	    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+	}
+	$delete_sr_sth->execute($out_stream_fk);
+	if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+    }
+
+
+    my $sql = "delete from family where out_stream=?";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    foreach my $st_id (@st_id_list)
+    {
+	$sth->execute($st_id);
+	if ($dbh->err()) { die "$q_name 2\n$sql\n$DBI::errstr\n"; }
+    }
+    $sth->finish();
+}
+# 2004-09-21
+sub sql_rewind_core
+{
+    my $q_name = "sql_rewind_core";
+    my $dbh = $_[0];
+    my $st_id = $_[1];
+    # my %rec = %{$_[2]};
+    
+    my $sql = "insert into stream_row (out_stream_fk) values ($st_id)";
+
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+    $sth->finish();
+    
+    $sql = "select currval('st_seq')";
+    $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+    (my $sr_pk) = $sth->fetchrow_array();
+    $sth->finish();
+
+    $sql = "insert into stream_column (sr_fk,col_name,col_value) values ($sr_pk,?,?)";
+    $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+
+    #foreach my $col (keys(%rec))
+    foreach my $col (keys(%{$::eenv{data}}))
+    {
+	$sth->bind_param(1,$col);
+	if (!defined($::eenv{data}{$col}))
+	{
+	    #
+	    # Quiet warning in the log about uninitialized strings.
+	    #
+	    $sth->bind_param(2, "", SQL_BINARY);
+	}
+	else
+	{
+	    $sth->bind_param(2, "$::eenv{data}{$col}", SQL_BINARY);
+	}
+	$sth->execute();
+    }
+    $sth->finish();
+    $dbh->commit();
+}
+
+# 2004-09-21
+sub sql_stream_active
+{
+    my $q_name = "sql_stream_archive";
+    my $dbh = $_[0];
+    my $st_id = $_[1];
+    
+    my $sql = "select active_flag from family where out_stream=$st_id";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    my $rows = $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$sql\n$DBI::errstr\n"; }
+    my $active_flag = 0;
+    #
+    # The first stream doesn't have a previous out_stream.
+    # Nothing can be read, so active_flag is false.
+    # 
+    if ($rows == 0)
+    {
+	return 0;
+	#die "no family row:$st_id\n$sql\n";
+    }
+    ($active_flag) = $sth->fetchrow_array();
+    $sth->finish();
+    return $active_flag;
+}
+# 2004-09-21
+# Used for debugging only.
+sub sql_dump_stream
+{
+    my $q_name = "sql_dump_stream";
+    my $dbh = $_[0];
+    my $out_stream_fk = $_[1];
+
+    my $sql = "select * from stream_row";
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+    my $out;
+    while(my $hr = $sth->fetchrow_hashref())
+    {
+	$out = "";
+	if ($hr->{out_stream_fk} == $out_stream_fk && $hr->{sr_ok}==1)
+	{
+	    foreach my $col (keys(%{$hr}))
+	    {
+		$out .= "$col:$hr->{$col} ";
+	    }
+	    write_log("ds:$out");
+	    return $hr;
+	}
+    }
+    return undef;
+}
+
+
+# 2004-09-21
+
+sub sql_unwind
+{
+    my $q_name = "sql_unwind";
+    # Open a new connection upon each attempt to revent an attempted
+    # read from locking the db.
+    my $dbh = $::dbh;
+    my $st_id = $::in_stream;
+    my $out_stream = $::out_stream;
+
+    my $sth;
+    my $sr_pk;
+
+    #
+    # Is my ancestor's out_stream active? Their out is my in, so send my st_id 
+    # not my $out_stream.
+    # Always try to read from a stream. Only check
+    # for inactive streams after trying to read since there 
+    # are records left in inactive streams.
+    #
+    my $stream_active = 1; #  = sql_stream_active($dbh, $st_id);
+    my $rows = 0;
+    my $hr;
+    my $xx = 0;
+
+    #write_log("uwind starts is:$st_id os:$out_stream");
+
+    my $row_sql = "select sr_pk from stream_row where out_stream_fk=$st_id and sr_ok limit 1";
+    $sth = $dbh->prepare($row_sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    while ($rows==0 && $stream_active)
+    {
+	$xx++;
+	#
+	# It may gain a little speed (?) by using the return
+	# value of execute. However, it returns 0E0 instead of zero.
+	# It turns out that 0E0 is zero, but isn't !. Cool, eh? 
+	#
+	$rows = $sth->execute();
+	if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+	#$rows = $sth->rows();
+	$sr_pk = $sth->fetchrow_array();
+	$stream_active = sql_stream_active($dbh, $st_id);
+    }
+    $sth->finish();
+    #write_log("looped:$xx");
+
+    #
+    # One of these is apparently sometimes undef. Use generic test instead of == 0
+    #
+    #if ((! $rows) && (! $stream_active))
+    if ($rows== 0 && $stream_active==0)
+    {
+	#write_log("r:$rows s:$stream_active");
+	# commented this out. Doesn't make sense to inactivate after reading
+	# That should be done after last write
+	# sql_inactivate_ancestor($dbh, $out_stream);
+	my %temp;
+	%{$::eenv{data}} = %temp;
+	#write_log("unwind returns w/o recs st:$st_id");
+	return (0);
+    }
+
+    if ($rows > 0)
+    {
+	my $data_sql = "select col_name,col_value from stream_column where sr_fk=$sr_pk";
+	$sth = $dbh->prepare($data_sql);
+	if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+	$sth->execute();
+	if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+	while((my $col_name, my $col_value) = $sth->fetchrow())
+	{
+	    $::eenv{data}{$col_name} = $col_value;
+	}
+	$sth->finish();
+
+	my $ok_sql = "update stream_row set sr_ok='f' where sr_pk=$sr_pk";
+	$sth = $dbh->prepare($ok_sql);
+	if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+	$sth->execute();
+	if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+	$sth->finish();
+    }
+    $dbh->commit();
+    #write_log("unwind done st_id:$st_id");
+    return (1);
+}
+
+#
+# psql -E -U deft deft 
+# -E is --echo-hidden shows psql's internal sql queries.
+# 
+# SELECT a.attname -- format_type(a.atttypid, a.atttypmod), a.attnotnull, a.atthasdef, a.attnum
+# FROM pg_class c, pg_attribute a
+# WHERE c.relname = 'code'
+#   AND a.attnum > 0 AND a.attrelid = c.oid
+# ORDER BY a.attnum
+#
+# Not used.
+sub sql_column_names
+{
+    my $q_name = "sql_column_names";
+    my $dbh = $_[0];
+    my $table = "table_$_[1]";
+
+    my $sql = "SELECT a.attname FROM pg_class c, pg_attribute a
+ 		WHERE c.relname = '$table' AND a.attnum > 0 AND a.attrelid = c.oid";
+
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+    my %col_hash;
+    while((my $col) = $sth->fetchrow_array())
+    {
+	$col_hash{$col} = 1;
+    }
+    $sth->finish();
+    return \%col_hash;
+}
+
+# not used.
+sub sql_add_columns
+{
+    my $q_name = "sql_add_columns";
+    my $dbh = $_[0];
+    my $table = "table_$_[1]";
+    my @col_list = @{$_[2]};
+
+    my $sql;
+    my $sth;
+
+    foreach my $col (@col_list)
+    {
+	$sql = "alter table $table add $col bytea";
+	$sth = $dbh->prepare($sql);
+	if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+	$sth->execute();
+	if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+	$sth->finish();
+	# just an experiment. 
+	# ps said:
+	# postgres: deft deft 127.0.0.1 ALTER waiting
+	$dbh->commit();
+    }
+}
+
+sub sql_prep_rewind
+{
+    my $dbh = $_[0];
+    my $st_id = $_[1];
+    my $rec_ref = $_[2];
+
+    my @new_cols;
+    my $add_flag = 0;
+
+    my $col_ref = sql_column_names($dbh, $st_id);
+
+    foreach my $col (keys(%{$rec_ref}))
+    {
+	if (! exists($col_ref->{$col}))
+	{
+	    push(@new_cols, $col);
+	    $add_flag = 1;
+	}
+    }
+    if ($add_flag)
+    {
+	sql_add_columns($dbh, $st_id, \@new_cols);
+    }
+}
+
+# Not used.
+sub sql_new_stream
+{
+    my $q_name = "sql_new_stream";
+    die "$q_name not used\n";
+    my $dbh = $_[0];
+    my $st_id = $_[1]; # sql_new_stream_id($dbh);
+    my @fields = @{$_[2]};
+
+    #
+    # Maybe create temp tables later. It seems like other connections
+    # have trouble seeing them.
+    #
+    my $sql = "create table table_$st_id (
+		st_pk integer DEFAULT nextval('st_seq'::text) NOT NULL,
+		st_ok boolean default 't'"; # do not comma \n terminate! tween is in the for loop.
+    foreach my $col (@fields)
+    {
+	$sql .= ",\ncol bytea";
+    }
+    $sql .= ") without oids";
+
+
+    my $sth = $dbh->prepare($sql);
+    if ($dbh->err()) { die "$q_name 1\n$DBI::errstr\n"; }
+    $sth->execute();
+    if ($dbh->err()) { die "$q_name 2\n$DBI::errstr\n"; }
+    return $st_id;
+}
+
+
+
+sub rewind
+{
+    if ($nr_flag)
+    {
+	return 0; # is this ok?
+    }
+    my $frozen = freeze(\%::eenv);
+    
+    my $nlcount = 1;
+    while ($frozen =~ /\n/g)
+    {
+	$nlcount++;
+    }
+    print "$nlcount\n";
+    #
+    # unbuffer so all the output goes now.
+    # 
+    my $ofh = select(STDOUT);
+    $| = 1;
+    select($ofh);
+    print "$frozen\n";
+    return 1;
+}
+
+
+#
+# This must return 1 or zero
+#
+my $dont_uw = 0;
+sub unwind
+{
+    if (is_head())
+    {
+	if ($dont_uw == 1)
+	{
+	    return 0;
+	}
+	$dont_uw = 1;
+	return 1;
+    }
+    my $frozen;
+    my $numbytes;
+    if( $numbytes = <$::peer_handle>)
+    {
+	if ($numbytes !~ m/^\d+$/)
+	{
+	    write_log("unwind gets bad numbytes:$numbytes");
+	    exit(1);
+	}
+	chomp($numbytes);
+	my $onb = $numbytes;
+	while ($numbytes--)
+	{
+	    $frozen .= <$::peer_handle>;
+	}
+	chomp $frozen;
+	my $href = thaw($frozen);
+	%::eenv = %{$href};
+	$::eenv{data}{numbytes} = $onb;
+	return 1;
+    }
+    else
+    {
+	#
+	# This doesn't empty $::eenv{data}:
+	# undef(%{$::eenv{data}});
+	# Creating a new, empty hash does work.
+	#
+	my %tmp;
+	#$tmp{data}{_return} = $::eenv{data}{_return};
+	%::eenv = %tmp;
+	return 0;
+    }
+}
+
+
+
+sub run_node
+{
+    my $dbh = $_[0];
+    my $node_pk = $_[1];
+    
+    (my $code_name, my $source) = sql_load_node($dbh, $node_pk);
+    
+    my $result;
+    #print " node:$code_name\n"; #  s:$source\n";
+    $result = run_core($source);
+    return $result;
+}
+#!/usr/bin/perl
+
+
+
+# machine_perl.pl
+use strict;
+use DBI;
+use CGI;
+use CGI::Carp qw(fatalsToBrowser);
+
+#     Start state s; # the current program
+#     execute s;
+#     condition c exists (a why);
+#     select next_state from ds where previous_state=s and why=c;
+#     s = next_state;
+
+my $path = ".";
+if ($0 =~ m/(.*)\//)
+{
+    $path = $1;
+}
+require "$path/deftlib.pl";
+
+
+sub machine_exit
+{
+    my $dbh = $_[0];
+    $dbh->disconnect();
+    exit(0);
+}
+
+sub machine_error
+{
+    my $dbh = $_[0];
+    my $node_pk = $_[1];
+    print "There was an error on node_pk $node_pk\n";
+    $dbh->disconnect();
+    exit(1);
+}
+sub run_node
+{
+    my $dbh = $_[0];
+    my $node_pk = $_[1];
+    my $name_space_ref = $_[2];
+    
+    my $code_name = sql_load_node($dbh, $node_pk, $name_space_ref);
+    
+    #
+    # Call the subroutine.
+    # How do subs change the environment? We need some 
+    # globals or a hash or something.
+    #
+    my $result;
+    {
+	no strict;
+	# print " node:$code_name\n";
+	$result = &{$code_name}();
+    }
+    return $result;
+}
+
+sub run_edges
+{
+    my $dbh = $_[0];
+    my $node_pk = $_[1];
+    my $name_space_ref = $_[2];
+    my $edges_hr = sql_load_edges($dbh, $node_pk, $name_space_ref);
+
+    foreach my $edge (keys(%{$edges_hr}))
+    {
+	no strict;
+	# print "edge:$edge\n";
+	my $result = &{$edge}();
+	if ($result)
+	{
+	    return $edges_hr->{$edge};
+	}
+    }
+    if (scalar(%{$edges_hr}))
+    {
+	return 0; # edge failure, fatal.
+    }
+    return -1; # terminal, ok.
+}
+
+main:
+{
+    my $query = new CGI();
+    my %ch = $query->Vars();
+    my %name_space; # key=code_name value=1
+    my $node_pk;
+
+    if (! exists($ch{graph_name}))
+    {
+	if (! $ARGV[0])
+	{
+	    print "Error:No graph name\n";
+	    print "Usage:machine.pl graph_name\n";
+	    print "For example:\n";
+	    print "machine.pl \"test graph\"\n";
+	    exit(1);
+	}
+	else
+	{
+	    $ch{graph_name} = $ARGV[0];
+	}
+    }
+    
+    my $dbh = deft_db_connect();
+    my $gr_pk = sql_gr_pk_by_name($dbh, $ch{graph_name});
+    if (! $gr_pk)
+    {
+	print "No gr_pk. Probably bad graph name:$ch{graph_name}\n";
+	machine_error($dbh, "(none). Bad gr_pk");
+    }
+
+    if (exists($ch{code_name}))
+    {
+	$node_pk = sql_node_pk_by_name($dbh, $gr_pk, $ch{code_name});
+    }
+    elsif ($ARGV[1])
+    {
+	$node_pk = sql_node_pk_by_name($dbh, $gr_pk, $ARGV[1]);
+    }
+    else
+    {
+	$node_pk = sql_initial_node_pk($dbh, $ch{graph_name});
+    }
+
+    my $go_flag = 1;
+    while($go_flag && ($node_pk > 0))
+    {
+	# run node, terminal states return false.
+	$go_flag = run_node($dbh, $node_pk, \%name_space);
+
+	# run edges in order until one is true and returns a new node.
+	my $new_node_pk = run_edges($dbh, $node_pk, \%name_space);
+	if (! $new_node_pk)
+	{
+	    machine_error($dbh, $node_pk); # exits.
+	}
+	$node_pk = $new_node_pk;
+    }
+    if (! $node_pk)
+    {
+	print "Undefined or zero node_pk\n";
+	machine_error($dbh, $node_pk);
+    }
+    machine_exit($dbh);
+}
+
+
+
+
+sub old_test
+{
+    #     my $source = "test";
+    #     {
+    # 	no strict;
+    # 	my $why = &{$source};
+    # 	print "why: $why\n";
+    #     }
+    #     exit();
+}
+
+sub old_code
+{
+    #
+    # load and run the state code.
+    # Do bad things happen if a sub is redefined? 
+    # Probably, so track what we've loaded, and don't reload.
+    #
+    my $dbh;
+    my $st_pk;
+    my %ch;
+    my %loaded_subs;
+	if (! $st_pk)
+	{
+	    $st_pk = doq_initial_state($dbh, $ch{graph_name});
+	}
+	(my $code_name, my $source) = doq_get_state($dbh, $st_pk);
+	if (!exists($loaded_subs{$code_name}))
+	{	    
+	    eval("$source");
+	    $loaded_subs{$code_name} = 1;
+	}
+
+	my $why = &{$code_name};
+	if (! $why)
+	{
+	    # if the state returned zero or undef, it must be terminal, so exit.
+	    $dbh->disconnect();
+	    exit();
+	}
+	
+	# load all the edge code
+	($source, my $code_hr) = doq_load_edges($dbh, $st_pk);
+	eval("$source");
+
+	foreach my $code_fk (keys(%{$code_hr}))
+	{
+	    #
+	    # $why is a string. Edges have symbolic returns.
+	    # Translate a symbolic return value to a new state.
+	    # Where is the stateful info stored between invocations?
+	    # The db?
+	    #
+	    my $why = &{$code_hr->{$code_fk}};
+	    if ($why )
+	    {
+		$st_pk = doq_translate_symbolic($dbh, $why);
+		last;
+	    }
+	    # False or zero return value implies execute the next edge.
+	}
+
+}
+
+
+
+# load_states_perl.pl
+
+#!/usr/bin/perl
+use strict;
+$0 =~ m/(.*)\//;
+my $path = $1;
+
+require "$path/deftlib.pl";
+main:
+{
+    my $all = read_file("$path/states.pl");
+    
+    # parse $all for subroutines
+    my $hr = subs_to_list($all); # msrlib.pl
+
+    state_code_to_db($hr);       # msrlib.pl
+}
+start deftlib.pl
+
+# This is part of Deft and the DeFindIt Classic Search engine.
+
+#Copyright (C) 2003,2004,2005 Tom Laudeman, Noah Healy.
+
+#This library is free software; you can redistribute it and/or
+#modify it under the terms of the GNU Lesser General Public
+#License as published by the Free Software Foundation; either
+#version 2.1 of the License, or (at your option) any later version.
+#
+#This library is distributed in the hope that it will be useful,
+#but WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+#Lesser General Public License for more details.
+#
+#You should have received a copy of the GNU Lesser General Public
+#License along with this library; if not, write to the Free Software
+#Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
+use strict;
+use Socket;
+use CGI;
+use DBI  qw(:sql_types);
+use Storable qw(freeze thaw);
+use Cwd qw(abs_path getcwd);
+
+# 
+# Locally scoped globals necessary
+# for the single process version of rewind.
+# 
+my @streams; # list (streamid) of lists (records) of hashes (columns)
+my $rec_avail;
+my $unwind_index = 0;
+my $rewind_index = 0;
+my @record_set;
+
+
+sub robust_path
+{
+    my $rpath = $_[0];
+    if (! $rpath)
+    {
+	$rpath = "./";
+    }
+    my $new_rpath = abs_path($rpath);
+    if ($new_rpath)
+    {
+	$rpath = $new_rpath;
+    }
+    # else abs_path() couldn't get the absolute path. Symlinks?
+    $rpath =~ /^([-\/\@\w.]+)$/; # untaint
+    $rpath = $1;
+    return $rpath;
+}
+
+my $path;
+if ($0 =~ m/(.*)\//)
+{
+    $path = robust_path($1);
+}
+else
+{
+    $path = robust_path("./");
+}
+
+require "$path/sql_lib.pl";
+require "$path/dcslib.pl";
+require "$path/runtlib.pl";
+require "$path/runt.pl";
+
+my $out_stream_counter = 0;
+sub next_stream
+{
+    $out_stream_counter++;
+    return $out_stream_counter;
+}
+
+my @context_stack;
+my %context;
+
+sub read_context
+{
+    $context{inc} = 1;
+    return ($context{sub}, $context{line}, $context{in}, $context{out}, $context{last});
+}
+
+sub set_context
+{
+    $context{sub} = $_[0];
+    $context{line} = $_[1];
+    $context{in} = $_[2];
+    $context{out} = $_[3];
+    $context{last} = $_[4];
+    $context{inc} = $_[5];
+}
+
+sub inc_context
+{
+    if ($context{inc})
+    {
+	$context{line}++;
+	$context{in} = $context{out};
+	$context{out} = next_stream();
+    }
+}
+
+sub push_context
+{
+    my %tmp = %context;
+    push(@context_stack, \%tmp); 
+}
+
+sub pop_context
+{
+    if ($#context_stack >= 0)
+    {
+	%context = %{pop(@context_stack)};
+	return 1;
+    }
+    return 0;
+}
+
+
+sub run_core
+{
+    if (get_flag("single_task"))
+    {
+	run_core_sp($_[0], $_[1]);
+    }
+    else
+    {
+	# There is an ancient, non-working copy in code_archive.txt
+	write_log("run_core_mp not implemented");
+	exit(1);
+    }
+}
+
+#
+# Note A:
+# Compiling results in a reference to a hash of lists
+# of eval-ready code strings.
+#
+# Note B:
+# Assume eenv is already initialized. 
+# Make any updates to eenv, then rewind so there is one starting record
+# in the stream.
+# 
+# Save state info e.g. next node 
+# Put into eenv for rendering since it needs to go into templates.
+#
+
+sub run_core_sp
+{
+    my $all_lines = $_[0];
+    my $to_node_fk = $_[1];
+
+    # See note A above.
+    my $exec = compile_deft($all_lines);
+
+    # See note B above.
+    if (defined($to_node_fk))
+    {
+	set_eenv("next_node", $to_node_fk)
+    }
+    set_eenv("_return", 1);
+
+    $::in_stream = 0;
+    $::out_stream = next_stream();
+    rewind();
+
+    set_context("main", # sub name
+		0, 	# starting line
+		$::out_stream, # in stream
+		next_stream(), # out stream
+		0);     # last output stream
+
+    #
+    # Basically this reads context, evals, then increments context.
+    # After reading we have to check if we're the last line of code, or 
+    # if there is no code left.
+    # If we're the last line, we rewind to $last.
+    # If there is no code we want to try to pop the context. If there is no
+    # context to pop, then we're done.
+    #
+    # Note 1:
+    # If we're last, change out_stream here and in context
+    # in case the last line is a sub call, the sub needs to
+    # rewind to the calling code's input stream.
+    #
+    # Note 2:
+    # Need to make no strict for the eval so $$vars will work.
+    # The perlfunc man page says that $@ won't work for everything. 
+    # All code is turned into Deftish Perl at compile.
+    # call_deft() or similar function might call set_context();
+    #
+
+    while(1)
+    {
+	(my $subname,
+	 my $line,
+	 $::in_stream,
+	 $::out_stream,
+	 my $last) = read_context();
+	my $aref = $exec->{deft}{$subname};
+	if ($line == $#{$aref})
+	{
+	    # See note 1 above.
+	    $::out_stream = $last;
+	    set_context($subname,$line,$::in_stream,$::out_stream,$last,1);
+	}
+	elsif ($line > $#{$aref})
+	{
+	    if (pop_context())
+	    {
+		inc_context();
+		next;
+	    }
+	    else
+	    {
+		last;
+	    }
+	}
+	my $coderef = $aref->[$line];
+	# See note 2 above.
+	{
+	    no strict;
+	    foreach my $language (keys(%{$exec})) 
+	    {
+		if ($language ne 'deft')
+		{
+		    if ($language eq 'perl')
+		    {
+			foreach my $import_sub (keys(%{$exec->{$language}}))
+			{
+			    eval($import_sub);
+			}
+		    }
+		}
+	    }
+	    eval($coderef);
+	    if ($@)
+	    {
+		die "$@\ndeft_st.pl err:$coderef\n";
+	    }
+	} 
+	inc_context(); # won't inc if inc flag == 0
+    }
+    
+    #
+    # We should stop crushing the final stream. The final stream
+    # was rewound to stream zero, making it ready for the next script.
+    # (If there is a next script.)
+    # 
+    return get_eenv("_return");
+}
+
+
+
+sub rewind
+{
+    #
+    # Dubious, but maybe necessary. State machine tests are supposed
+    # to set the return flag. Normally true is probably best,
+    # and any Deft API or user subs that want a false return can set it.
+    # Heaven forbid the sub that rewound this record forgot to set it. 
+    # If it wasn't set, we'll make it true.
+    #
+    if (! exists_eenv("_return"))
+    {
+	set_eenv("_return", 1);
+    }
+
+    if (get_flag("single_task"))
+    {
+	push(@{$streams[$::out_stream]}, get_ref_eenv());
+
+	#%{$record_set[$rewind_index]} = %{get_ref_eenv()};
+	#$rec_avail{$::out_stream} = $rewind_index;
+	#$rewind_index++;
+    }
+    elsif (get_flag("last_task"))
+    {
+	# The last task must not rewind to stdout
+	# However, in a state machine situation (machine.pl)
+	# the last task should rewind at least one record
+	# to the database.
+    }
+    else
+    {
+	my $frozen = freeze_eenv();
+	my $nlcount = 1;
+	while ($frozen =~ /\n/g)
+	{
+	    $nlcount++;
+	}
+	print "$nlcount\n";
+	my $ofh = select(STDOUT);
+	$| = 1;
+	select($ofh);
+	print "$frozen\n";
+	return 1;
+    }
+}
+
+
+#
+# Deft and unwind() assume there is always
+# at least one record.
+# 
+# Noah wants unwind() (and implicitly everything else)
+# to properly handle a non-existant record.
+# I didn't nail him down about what is "properly", but his thinking
+# is that the user's first line of Deft code won't be upset by unwind()
+# failing to make any columns.
+#
+# Instead I've made Deft create a record with at least one column
+# when execution starts.  Aside from my doubts that the current
+# code can't deal with a non-existant record, there is a second
+# problem. I'm unwilling to burden future generations of programmers
+# with the stipulation that all the code should gracefully handle
+# a non-existant record even though the only time a record might
+# not exist is start of execution. Since any Deft API or user
+# func could be the first line of a Deft script, they'd all have
+# to be empty-safe. Historically, the code has not been
+# empty-safe, and as a result has some safeguards that have
+# turned out to be wrong (bugs).
+#
+# With this new thinking, the API and user code are never exposed
+# to singularities (like "head node", no record to unwind, 
+# and unwinding a record with no columns).
+#
+# Incidently, I think Noah wants to call a missing record "the false record",
+# and a record with no columns is "the empty record" also known as "the empty set".
+# Happily, this should never be any concern to Deft users.
+#
+
+sub unwind
+{
+    my $rval = 0;
+    clear_eenv();
+    if (get_flag("single_task"))
+    {
+	my $eeref;
+	if ($eeref = pop(@{$streams[$::in_stream]}))
+	{
+	    set_ref_eenv($eeref);
+	    $rval = 1;
+	}
+# 	if ($rec_avail{$::in_stream} >= $unwind_index)
+# 	{
+# 	    set_ref_eenv($record_set[$unwind_index]);
+# 	    $unwind_index++;
+# 	    $rval = 1;
+# 	}
+    }
+    else
+    {
+	my $frozen;
+	my $numbytes;
+	if( $numbytes = <$::peer_handle>)
+	{
+	    chomp($numbytes);
+	    if ($numbytes !~ m/^\d+$/)
+	    {
+		write_log("unwind gets bad numbytes:$numbytes. Exiting.");
+		if (0) # only enable this for stream error debugging
+		{
+		    while(my $temp = <$::peer_handle>)
+		    {
+			write_log("t:$temp");
+		    }
+		}
+		exit(1);
+	    }
+	    while ($numbytes--)
+	    {
+		$frozen .= <$::peer_handle>;
+	    }
+	    chomp $frozen;
+	    my $href = thaw($frozen);
+	    if (! $href)
+	    {
+		write_log("undef href");
+	    }
+	    set_ref_eenv($href);
+	    return 1;
+	}
+	else
+	{
+	    clear_eenv();
+	    return 0;
+	}
+    }
+}
+
+
+sub call_deft
+{
+    (my $subname,
+     my $line,
+     my $in,
+     my $out,
+     my $last) = read_context();
+    push_context();
+    
+    set_context("$_[0]", # sub name
+		0,	# line index
+		$in,	# in
+		next_stream(),	# out
+		$out,	# last
+		0);	# inc
+		
+}
+
+sub if_col
+{
+    my $col = $_[0];
+    my $sub_to_call = $_[1];
+    
+    (my $subname,
+     my $line,
+     my $in,
+     my $out,
+     my $last) = read_context();
+    push_context();
+
+    #
+    # Our last is context's out. Remember, inc_context runs
+    # when we return.
+    # Our out will be the called sub's in, so we make a new out stream.
+    # 
+
+    $last = $out;
+    $out = next_stream();
+    while(unwind())
+    {
+	if (get_eenv($col))
+	{
+	    $::out_stream = $out;
+	}
+	else
+	{
+	    $::out_stream = $last;
+	}
+	rewind();
+    }
+
+    # 
+    # Set up the context for the called sub. inc_context will not run.
+    # In stream is where we've been rewinding to, and the last
+    # of the sub is the same as the last we rewound to above.
+    # 
+
+    set_context($sub_to_call, # sub name
+		0,	# line index
+		$out,	# in
+		next_stream(),	# out
+		$last,	# last
+		0);	# inc
+}
+
+sub if_simple
+{
+    my $expr = $_[0];
+    my $sub_to_call = $_[1];
+    
+    (my $subname,
+     my $line,
+     my $in,
+     my $out,
+     my $last) = read_context();
+    push_context();
+
+    #
+    # Our last is context's out. Remember, inc_context runs
+    # when we return.
+    # Our out will be the called sub's in, so we make a new out stream.
+    # 
+
+    $last = $out;
+    $out = next_stream();
+    while(unwind())
+    {
+	no strict;
+	restorevars();
+	if (eval("$expr"))
+	{
+	    $::out_stream = $out;
+	}
+	else
+	{
+	    $::out_stream = $last;
+	}
+	rewind();
+    }
+
+    # 
+    # Set up the context for the called sub. inc_context will not run.
+    # In stream is where we've been rewinding to, and the last
+    # of the sub is the same as the last we rewound to above.
+    # 
+
+    set_context($sub_to_call, # sub name
+		0,	# line index
+		$out,	# in
+		next_stream(),	# out
+		$last,	# last
+		0);	# inc
+}
+
+
+1;
+end deftlib.pl

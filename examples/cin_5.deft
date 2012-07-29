@@ -1,0 +1,65 @@
+
+# memnonic: cars if nested
+# Test nested if-else statements.
+
+ main:
+{
+    read_tab_data("../demo.dat",$sequence, $make, $model, $displacement, $units);
+    dump_stream("initial");
+    
+    # in:3 true:5 false:4
+    # depth 0.
+    if ($make =~ m/ford/i  || $make =~ m/volks/i)
+    {
+	# in:5
+	# depth 1
+	if ($model =~ m/mustang/i)
+	{
+	    # true:7 out:8
+	    $model = "(collectible) $model";
+	    # pop 8 to union
+	}
+	# u:-1,-1,8,-1 s:4
+ 	else
+ 	{
+	    # false:6
+	    # ford  in:6 false:9 true:10
+	    # depth 2
+	    if ($make =~ m/ford/i)
+	    {
+		# true:10
+		# never get here because stream 10 is empty
+		$made_in = "Made in America.";
+		# if we got here we would pop to union, but we don't get here
+		# u:8 s:4,9
+	    }
+	    # union depth 2, union nothing with 9
+
+	    # volks-2  in:9 false:11 true:12
+	    if ($make =~ m/volks/i)
+	    {
+		# true:12 out:13
+		$made_in = "Made in Germany.";
+	    }
+	    # union depth 2
+	    # u:-1,-1,8,-1,13 s:4,11 union 13 to 11
+	    # s:4,11
+	    # u:-1,-1,8 s:4,11
+ 	}
+	# union depth 1
+	# union 8 to 11
+
+	if ($make =~ m/ford/i)
+	{
+	    $made_in = "Made in Detroit.";
+	}
+	# union 16 to 14
+    }
+    else
+    {
+	$model = "(not Ford/not VW) $model";
+    }
+    # union
+
+    dump_stream("after nested");
+}

@@ -1,0 +1,36 @@
+ main:
+{
+    read_tab_data("./demo.dat",$sequence,$make,$model,$displacement,$units);
+    dump_stream("main_1");
+    deft_uc($units, $make, $sequence);
+    dump_stream("main_2");
+    dcc($dcc_disp, $displacement, [""],[$displacement . ",an"]);
+    $file_name = "-";
+    $template = "cars2_t.txt";
+    render($file_name,$template,"");
+}
+
+sub deft_uc($dummy, $str, $order)
+{
+    # read_tab_data("./demo.dat",$sequence,$make,$model,$displacement,$units);
+    $units++;
+    $str = ucfirst($str);
+    $order++;
+}
+
+# A Perl subroutine. It will not be compiled to Deft, 
+# and Deft will wrap any calls to this sub with an unwind/rewind loop.
+perl cvar
+{
+    my $str = $_[0];
+    my $xx = 0;
+    while ($str =~ m/./g)
+    {
+	$xx++;
+    }
+    return $xx;
+}
+
+# At one time, trailing comments or comments outside subroutines
+# broke the compiler.
+# $a = 1+2;

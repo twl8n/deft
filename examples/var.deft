@@ -1,0 +1,11 @@
+
+
+main:
+{
+    read_tab_data("./demo.dat",$sequence,$make,$model,$displacement,$units);
+    #    naive_make_col($var, "1..2");
+    $value = rand();
+    dump_stream('hello');
+    $more_value = rand();
+    dump_stream('cake');
+}
