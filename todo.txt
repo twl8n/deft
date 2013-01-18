@@ -13,11 +13,33 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
 
+eenv and eeref are the current record. We unwind the current record and when
+we're done, we push it onto the list of the records for the next statement.
+
+What holds the linked lists that are the unwind list and rewind list?
+$stream_head is a hash with pointers to prev and next. The top of the list
+(prev) is the newest. We insert records at the head, so we can insert as many
+records as necessary, and still finish unwinding the remaining (current)
+records.
+
+Row forking is funny because we want to insert new rows at the beginning of the
+list, but that may not work in Perl. Rows may have to be linked lists, so we can
+insert. All the other row forking logic still applies, especially each row as a
+stack.
+
+
+- + fork rows when stack depth increases.
+
+$table[row][0]->{var => value}
+$table[row][0]->{var2 => value}
+
+push(@{$table[$row]}{qw/var1 var2/}, @{$table[$row]}{qw/var1 var2/});
+
+
 $table[row_number][stack_depth]
 $table[stack_depth][row_number]
 
 $curr_eef
-
 
 push @table, \%record;
 $record{variable_name}[0] = 'manipulable value';
