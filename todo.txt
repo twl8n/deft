@@ -13,6 +13,37 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
 
+{
+    my @table;
+    foreach my $row (0..3)
+    {
+        $table[0][$row] = {var1 => "v1: $row", var2=> "v2: $row", var3 => "v3: $row"};
+    }
+
+    # print Dumper(\@table);
+
+    foreach my $row (0..$#{$table[0]})
+    {
+        # Use hash slice as both lvalue and value.
+        @{$table[1][$row]}{qw/var1 var2/} = @{$table[0][$row]}{qw/var1 var2/};
+    }
+
+    #unwind/rewind
+
+    foreach my $row (0..$#{$table[1]})
+    {
+        # Use hash slice as both lvalue and value.
+        print "old: $table[1][$row]\n";
+        $table[1][$row]{var3} = "new $row";
+        
+        my %new = %{$table[1][$row]};
+        push(@{$table[1]}, \%new);
+        $table[1][$#{$table[1]}]{var2} = "really new $row";
+    }
+    
+    print Dumper(\@{$table[1]});
+}
+
 eenv and eeref are the current record. We unwind the current record and when
 we're done, we push it onto the list of the records for the next statement.
 

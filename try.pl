@@ -7,21 +7,52 @@ use Data::Dumper;
     my @table;
     foreach my $row (0..3)
     {
-        $table[$row][0] = {var1 => "v1: $row", var2=> "v2: $row", var3 => "v3: $row"};
+        $table[0][$row] = {var1 => "v1: $row", var2=> "v2: $row", var3 => "v3: $row"};
     }
 
     # print Dumper(\@table);
 
-    foreach my $row (0..3)
+    foreach my $row (0..$#{$table[0]})
     {
         # Use hash slice as both lvalue and value.
-        @{$table[$row][1]}{qw/var1 var2/} = @{$table[$row][0]}{qw/var1 var2/};
+        @{$table[1][$row]}{qw/var1 var2/} = @{$table[0][$row]}{qw/var1 var2/};
     }
-    foreach my $row (0..3)
+
+    #unwind/rewind
+
+    foreach my $row (0..$#{$table[1]})
     {
-        print Dumper(\@{$table[$row]}[1]);
+        # Use hash slice as both lvalue and value.
+        print "old: $table[1][$row]\n";
+        $table[1][$row]{var3} = "new $row";
+        
+        my %new = %{$table[1][$row]};
+        push(@{$table[1]}, \%new);
+        $table[1][$#{$table[1]}]{var2} = "really new $row";
     }
+    
+    print Dumper(\@{$table[1]});
 }
+
+exit();
+
+my @list = (0..3);
+
+# foreach my $index (0..$#list)
+my $max = $#list;
+for(my $index = 0; $index <= $max; $index++)
+{
+    if ($index == 0)
+    {
+        push(@list, "stuff");
+        print "pushed, last: $#list\n";
+    }
+    print "list: $list[$index]\n";
+}
+
+print Dumper(\@list);
+
+exit();
 
 exit;
 {

@@ -233,6 +233,11 @@ sub read_tab_data
 		$first = 0;
 		for(my $xx=0; $xx<=$#va && $temp; $xx++)
 		{
+                    # The regex needs an if() test.  If there are too few
+                    # columns, the missing columns will have the value of the
+                    # last column that existed. This is the old regex $1
+                    # problem.
+
 		    $temp =~ s/(.*?)[\t\n]//;
 		    set_eenv($va[$xx], $1);
 		}
