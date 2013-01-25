@@ -13,7 +13,12 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
-- Deft is pass-by-reference and there are no return values. If you want a new column it must be created when
+- (No.) Once we get table stack frames working with a deep copy, can we modify it to use references for all
+  ancestors and avoid the deep copy and improve both speed and memory use? Probably not since when we make a
+  new row, the only data duplicated that is not necessary is the top stack frame, not the ancestors, or at
+  least not (eventually) the oldest ancestor. The top stack frame is ephemeral, the ancestor is permanent.
+
+- x Deft is pass-by-reference and there are no return values. If you want a new column it must be created when
   being passed into a subroutine. The sub can change the new/existing column, but any columns created inside
   the sub are strictly local to that sub.
 
