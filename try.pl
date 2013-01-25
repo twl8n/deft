@@ -2,36 +2,55 @@
 
 use strict;
 use Data::Dumper;
+use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 
 {
     my @table;
     foreach my $row (0..3)
     {
-        $table[0][$row] = {var1 => "v1: $row", var2=> "v2: $row", var3 => "v3: $row"};
+        $table[$row][0] = {var1 => "v1: $row", var2=> "v2: $row", var3 => "v3: $row"};
     }
 
-    # print Dumper(\@table);
+    printf "first: %s\n", Dumper(\@table);
 
-    foreach my $row (0..$#{$table[0]})
+    foreach my $row (0..$#table)
     {
         # Use hash slice as both lvalue and value.
-        @{$table[1][$row]}{qw/var1 var2/} = @{$table[0][$row]}{qw/var1 var2/};
+        @{$table[$row][1]}{qw/xxx1 xxx2/} = @{$table[$row][0]}{qw/var1 var2/};
     }
+
+    foreach my $row (0.. $#table)
+    {
+        printf "second $row: %s\n", Dumper(\%{$table[$row][1]});
+    }
+
+    my $row_max = $#table;
+    foreach my $row (0..$row_max)
+    {
+        $table[$row][1]{xxx2} = "modified $row";
+        my $new = dclone(\@{$table[$row]});
+        print "new: $new \@{$table[$row]}\n";
+        $new->[1]{xxx2} = "really new $row";
+        push(@table, $new);
+    }
+    
+    foreach my $row (0.. $#table)
+    {
+        printf "third $row: %s\n", Dumper(\%{$table[$row][1]});
+    }
+
+    printf "third-dumper: %s\n", Dumper(\@table);
 
     #unwind/rewind
 
-    foreach my $row (0..$#{$table[1]})
+    foreach my $row (0..$#table)
     {
         # Use hash slice as both lvalue and value.
-        print "old: $table[1][$row]\n";
-        $table[1][$row]{var3} = "new $row";
-        
-        my %new = %{$table[1][$row]};
-        push(@{$table[1]}, \%new);
-        $table[1][$#{$table[1]}]{var2} = "really new $row";
+        @{$table[$row][0]}{qw/var1 var2/} = @{$table[$row][1]}{qw/xxx1 xxx2/};
+        pop(@{$table[$row]});
     }
-    
-    print Dumper(\@{$table[1]});
+    printf "post-rewind: %s\n", Dumper(\@table);
+
 }
 
 exit();

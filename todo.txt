@@ -12,6 +12,31 @@ Tags are "foo:", such as bug: fix: deprecated: no: discuss:
 Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
+ 
+- Deft is pass-by-reference and there are no return values. If you want a new column it must be created when
+  being passed into a subroutine. The sub can change the new/existing column, but any columns created inside the sub
+  are strictly local to that sub.
+
+- inc_depth pushes a new stack frame onto each row stack. The whole ancestor stack is copied so that when it
+  is time to rewind the row has all the previous stack frames necessary to resolve the current row against the
+  row in the previous stack frame.
+
+- unwind, then rewind percolates up through all ancestors. Unwind always
+  continues with the deepest child until no records are left. Unwind translates
+  extra rows against the current row, and translates the extra rows to its
+  parent, and then deletes the new/extra rows from its own table. Thus the top
+  most table can gain rows constantly.
+
+  An intermediate ancestor will unwind when all its children are done unwinding,
+  which can launch another cascade of children/descendents.
+
+- rewrite dec_depth() for the new code.
+
+- when each table is no longer used, we want them to be garbage collected. This
+  probably means removing all references to those old tables.
+
+- fix inc_depth() to fork the table
+
 
 {
     my @table;
@@ -108,8 +133,6 @@ vlr: $VAR1 = [
           'units'
         ];
 
-
-
 - inc_depth() or what ever fails to create new columns required by the
   sub prototype. This should have $str, $order, $dummy and 7 records.
 
@@ -125,7 +148,6 @@ xrk:  get_eenv: $VAR1 = 0;
 (1) 2.units = 1
 
 Count:1
-
 
 - convert \%urh to view_list in all perl that calls unwind().
 

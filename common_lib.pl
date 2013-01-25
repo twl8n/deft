@@ -488,25 +488,19 @@ sub da
     print "alias_ref: " . Dumper($alias_ref) . "\n";
 }
 
-sub inc_depth
+sub xinc_depth
 {
     # This creates a hash to link a local alias name with the actual
     # depth.field in the table. It links the function call with the
     # function prototype. 'str' => '1.model'.
-
     push(@alias_stack, $alias_ref); 
-
     # See note id2 above.
-
     my %new_alias;
-
     while(@_)
     {
 	my $proto = shift(@_);
 	my $arg = shift(@_);
-
 	# See note id1 above.
-
 	if (! exists($alias_ref->{$proto}))
 	{
 	    my $output = "unknown arg $arg depth:". get_depth() . "\n";
@@ -520,9 +514,26 @@ sub inc_depth
 	}
 	$new_alias{$arg} = $alias_ref->{$proto};
     }
-
     $depth++;
     $alias_ref = \%new_alias;
+}
+
+sub inc_depth
+{
+    my @proto;
+    my @arg;
+    while(@_)
+    {
+       push(@proto, shift(@_));
+       push(@arg, shift(@_));
+    }
+    foreach my $row (0..$#{$table[0]})
+    {
+        # Use hash slice as both lvalue and value.
+        @{$table[$depth+1][$row]}{@proto} = @{$table[$depth][$row]}{@arg};
+    }
+
+    $depth++;
 }
 
 
