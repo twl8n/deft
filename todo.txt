@@ -14,8 +14,8 @@ and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
 - Deft is pass-by-reference and there are no return values. If you want a new column it must be created when
-  being passed into a subroutine. The sub can change the new/existing column, but any columns created inside the sub
-  are strictly local to that sub.
+  being passed into a subroutine. The sub can change the new/existing column, but any columns created inside
+  the sub are strictly local to that sub.
 
 - inc_depth pushes a new stack frame onto each row stack. The whole ancestor stack is copied so that when it
   is time to rewind the row has all the previous stack frames necessary to resolve the current row against the

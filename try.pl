@@ -1,8 +1,13 @@
-#!/opt/local/bin/perl
+#!/usr/bin/perl
 
 use strict;
 use Data::Dumper;
-use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
+
+# This works with our list of lists. Note the function is call dclone().
+# use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
+
+# This works with our lists of lists and may be faster than Storable.
+use Clone qw(clone);
 
 {
     my @table;
@@ -28,7 +33,7 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
     foreach my $row (0..$row_max)
     {
         $table[$row][1]{xxx2} = "modified $row";
-        my $new = dclone(\@{$table[$row]});
+        my $new = clone(\@{$table[$row]});
         print "new: $new \@{$table[$row]}\n";
         $new->[1]{xxx2} = "really new $row";
         push(@table, $new);
