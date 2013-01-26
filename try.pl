@@ -29,22 +29,48 @@ use Clone qw(clone);
         printf "second $row: %s\n", Dumper(\%{$table[$row][1]});
     }
 
+    foreach my $row (0..$#table)
+    {
+        # Use hash slice as both lvalue and value.
+        @{$table[$row][2]}{qw/yyy1 yyy2/} = @{$table[$row][1]}{qw/xxx1 xxx2/};
+    }
+
     my $row_max = $#table;
     foreach my $row (0..$row_max)
     {
-        $table[$row][1]{xxx2} = "modified $row";
         my $new = clone(\@{$table[$row]});
         print "new: $new \@{$table[$row]}\n";
-        $new->[1]{xxx2} = "really new $row";
-        push(@table, $new);
-    }
-    
-    foreach my $row (0.. $#table)
-    {
-        printf "third $row: %s\n", Dumper(\%{$table[$row][1]});
+        $new->[2]{yyy2} = "i like pie $table[$row][2]{yyy2}";
+        push(@table, $new); 
+        $table[$row][2]{yyy2} = "funny $table[$row][2]{yyy2}";
     }
 
-    printf "third-dumper: %s\n", Dumper(\@table);
+    printf "depth 2: %s\n", Dumper(\@table);
+    
+    # rewind here
+    foreach my $row (0..$#table)
+    {
+        # Use hash slice as both lvalue and value.
+        @{$table[$row][1]}{qw/xxx1 xxx2/} = @{$table[$row][2]}{qw/yyy1 yyy2/};
+        pop(@{$table[$row]});
+    }
+
+    my $row_max = $#table;
+    foreach my $row (0..$row_max)
+    {
+        my $new = clone(\@{$table[$row]});
+        print "new: $new \@{$table[$row]}\n";
+        $new->[1]{xxx2} = "really new $table[$row][1]{xxx2}";
+        push(@table, $new);
+        $table[$row][1]{xxx2} = "modified $table[$row][1]{xxx2}";
+    }
+
+    # foreach my $row (0.. $#table)
+    # {
+    #     printf "third $row: %s\n", Dumper(\%{$table[$row][1]});
+    # }
+
+    # printf "fourth-dumper: %s\n", Dumper(\@table);
 
     #unwind/rewind
 
@@ -54,7 +80,7 @@ use Clone qw(clone);
         @{$table[$row][0]}{qw/var1 var2/} = @{$table[$row][1]}{qw/xxx1 xxx2/};
         pop(@{$table[$row]});
     }
-    printf "post-rewind: %s\n", Dumper(\@table);
+    printf "post-all: %s\n", Dumper(\@table);
 
 }
 
