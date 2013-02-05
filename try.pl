@@ -13,7 +13,6 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 
 {
     my $in_stream = 0;
-    my $out_stream = $in_stream+1;
 
     my @table;
 
@@ -22,9 +21,6 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
         $table[$rowc][0] = {var1 => "v1: $rowc", var2=> "v2: $rowc", var3 => "v3: $rowc", _stream => $in_stream};
 
     }
-
-    # Pre-parse to know the nesting depth, then set the eventual destination stream.
-    my $dest_stream = $in_stream + 2;
 
     my $max = $#table;
     foreach my $row (0.. $max)
@@ -41,12 +37,12 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
             # if the outer if-stmt creates rows, then those rows should be run tested by the inner if-stmt, so
             # we can't pre-compile nested if-stmts this way.
 
-            $hr->{_stream} = $in_stream+1;
             $hr->{var1} .= "pie";
-            $hr->{_stream} = $dest_stream;
+            $hr->{_stream} = $in_stream+1;
             my $newr = dclone(\@{$table[$row]});
             $newr->[0]->{var1} = "new row from var1";
-            $newr->[0]->{_stream} = $in_stream+1;
+            # don't change the clone's stream. It must be the same as the original. Right?
+            # $newr->[0]->{_stream} = $in_stream+1;
             print "pushing $newr onto table of $row\n";
             push(@table, $newr);
 
@@ -58,8 +54,10 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
         }
     }
 
+    # Now we have a mixture of streams 1 and 2. Stream 1 still needs a (nested) if-stmt to run.
+
     # The inner if-stmt. This will run on every row of $in_stream+1, even if there was only one row in that
-    # stream. The old, incorrect code failed here.
+    # stream. The old, incorrect code failed to do this.
 
     # if-stmt output stream is always in_stream+1, which here is in_stream+1+1.
 
@@ -70,60 +68,32 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
         if ($hr->{_stream} == $in_stream+1 && $hr->{var2} eq "v2: 2")
             {
             $hr->{var2} .= " cheesecake";
+            $hr->{_stream} = $in_stream+1+1; 
+
             my $newr = dclone(\@{$table[$row]});
             $newr->[0]->{var1} = "new row from var2";
-            $newr->[0]->{_stream} = $in_stream+1+1;
+            # don't change the clone's stream. It must be the same as the original. Right?
+            # $newr->[0]->{_stream} = $in_stream+1+1;
             push(@table, $newr);
-            $hr->{_stream} = $in_stream+1+1; # Could "output" to $in_stream+2;
         }
     }
 
-    # $dest_stream = $in_stream + 4;
-    # # if/else execute phase runs the code, results into the destination stream
-    
+    # It is possible we still have some stream 1 records left, and that's fine.
+
     # All nesting is done, so merge all the streams. Streams that did not go through the final if-stmt will
     # have the original in_stream+1, so all of them need to be merged.
+
+    # Hey! We can merge back to stream zero. Streams really are just a stack-ish behavior which begs the
+    # question: Are streams the same or compatible stack with the stack-frame depth?
 
     $max = $#table;
     foreach my $row (0..$max)
     {
         my $hr = $table[$row][0];
-        $hr->{_stream} = $in_stream +2;
+        $hr->{_stream} = 0;
     }
 
-    
-    # $max = $#table;
-    # foreach my $row (0..$max)
-    # {
-    #     my $hr = $table[$row][0];
-    #     $hr->{_stream} = $dest_stream;
-    #     # if ($hr->{_stream} == $in_stream+1)
-    #     # {
-    #     #     $hr->{var1} .= "pie";
-    #     #     $hr->{_stream} = $dest_stream;
-    #     #     my $newr = dclone(\@{$table[$row]});
-    #     #     $newr->[0]->{var1} = "new row from var1";
-    #     #     $newr->[0]->{_stream} = $dest_stream;
-    #     #     print "pushing $newr onto table of $row\n";
-    #     #     push(@table, $newr);
-    #     # }
-    #     # if ($hr->{_stream} == $in_stream+3)
-    #     # {
-    #     #     $hr->{var2} .= " cheesecake";
-    #     #     my $newr = dclone(\@{$table[$row]});
-    #     #     $newr->[0]->{var1} = "new row from var2";
-    #     #     $newr->[0]->{_stream} = $dest_stream;;
-    #     #     push(@table, $newr);
-    #     # }
-    #     # if ($hr->{_stream} == $in_stream+2)
-    #     # {
-    #     #     $hr->{var1} .= "cake";
-    #     #     $hr->{_stream} = $dest_stream;
-    #     # }
-    # }    
-    # $in_stream = $dest_stream;
-    # $dest_stream++;
-
+    # A new line of deft code.
     # Add a new column. No nesting, no cloning rows.
 
     $max = $#table;
@@ -132,9 +102,7 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
         my $hr = $table[$row][0];
         $hr->{var4} = "new col $row";
         
-        # No nesting or subs then no need to inc the stream.
-
-        # $hr->{_stream} = $in_stream +1;
+        # No nesting or subs so no need to inc the stream.
     }
     
     printf ("ff: %s\n", Dumper(\@table));
