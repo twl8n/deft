@@ -33,15 +33,15 @@ my @sub_stack;
 # my %old_vars;  # hash of var names and their depth, use by garbage_collection()
 #my @depth_vars; # list of lists
 my $main_str = "main:"; # this changes way too often.
-my $depth = 1;   # current depth
+# my $depth = 1;   # unused, see $#tablecurrent depth
 my %deft_func;   # See sub initdeft
 # my %eenv;
 my $eenv;         # Hash ref
 my %is_dsub;     # key is sub name, value is 1
 my %args;        # key is sub name, value is a hash of arg names.
 my %is_top;      # indexes of Deft (table operating) subs.
-my @alias_stack; # list of alias hash references.
-my $alias_ref;   # ref to the current col name alias hash.
+# my @alias_stack; # list of alias hash references.
+# my $alias_ref;   # ref to the current col name alias hash.
 
 my $tc = 1; # valid wrap values are non-zero
 my $wrap_scalar = $tc++;
@@ -483,10 +483,10 @@ sub garbage_collection
 # We cannot overwrite the old (current) alias_ref until the end
 # because we have to look up the aliases of all the named protos.
 
-sub da
-{
-    print "alias_ref: " . Dumper($alias_ref) . "\n";
-}
+# sub da
+# {
+#     print "alias_ref: " . Dumper($alias_ref) . "\n";
+# }
 
 sub xinc_depth
 {
@@ -530,10 +530,9 @@ sub inc_depth
     foreach my $row (0..$#{$table[0]})
     {
         # Use hash slice as both lvalue and value.
-        @{$table[$depth+1][$row]}{@proto} = @{$table[$depth][$row]}{@arg};
+        @{$table[$#table+1][$row]}{@proto} = @{$table[$#table][$row]}{@arg};
     }
-
-    $depth++;
+    # $depth++;
 }
 
 
@@ -541,9 +540,17 @@ sub dec_depth
 {
     # The decrement happens in garbage_collection(). We do pop
     # @sub_stack in garbage_collection(). Anywhere else?
-
-    $alias_ref = pop(@alias_stack);
-    $depth--;
+    while(@_)
+    {
+       push(@proto, shift(@_));
+       push(@arg, shift(@_));
+    }
+    foreach my $row (0..$#{$table[0]})
+    {
+        # Use hash slice as both lvalue and value.
+        @{$table[$#table-1][$row]}{@arg} = @{$table[$#table][$row]}{@proto};
+    }
+    pop(@table); # pops the current stack frame and all its rows.
 }
 
 sub get_depth
@@ -562,38 +569,15 @@ sub get_depth
 # }
 
 # Given a user var, return the sys var.
-sub alias
-{
-    return $alias_ref->{$_[0]};
-}
+# sub alias
+# {
+#     return $alias_ref->{$_[0]};
+# }
 
-sub clear_alias
-{
-    delete($alias_ref->{$_[0]});
-}
-
-
-
-# todo: move this to st_lib.pl
-
-# Copy columns from the parent memoz record into the current
-# (child) record. This should be called exclusively from unwind().
-
-sub copy_view_list
-{
-    my $parent_eeref = get_eenv("_memoz");
-    my $vl_ref = view_list();
-
-    # print "self: $eenv parent: $parent_eeref\n";
-    my $output ;
-    foreach my $var (@{$vl_ref})
-    {
-	$output .= " $var old: $eenv->{alias($var)} new: $parent_eeref->{alias($var)}\n";
-	$eenv->{alias($var)} = $parent_eeref->{alias($var)};
-    }
-    $eenv->{alias("_memoz")} = 0;
-    # print "cvl: $output\n";
-}
+# sub clear_alias
+# {
+#     delete($alias_ref->{$_[0]});
+# }
 
 
 # Usage:
@@ -613,11 +597,11 @@ sub set_eenv
 	my @clist = caller(0); 
 	die "null eenv in set_eenv $clist[3] called from $clist[1] line $clist[2], died";
     }
-    if (! exists($alias_ref->{"$_[0]"}))
+    if (! exists($eenv{$_[0]}))
     {
-	$alias_ref->{$_[0]} = "$depth\.$_[0]";
+	die "Error: non existing var in set_eenv: $_[0]\n";
     }
-    $eenv->{alias($_[0])} = $_[1];
+    $eenv->{$_[0]} = $_[1];
 }
 
 # Copy all the non-internal cols from one record to another.
@@ -659,9 +643,9 @@ sub get_eenv
 	my @clist = caller(0); 
 	die "null eenv in get_eenv $clist[3] called from $clist[1] line $clist[2], died";
     }
-    if (exists($eenv->{alias($_[0])}))
+    if (exists($eenv->{$_[0]}))
     {
-	return $eenv->{alias($_[0])};
+	return $eenv->{$_[0]};
     }
     else
     {
@@ -682,7 +666,7 @@ sub get_eenv
 # in use. Used by keycmp() in runtlib.pl
 sub get_eenv_handle
 {
-    return $_[1]->{alias($_[0])};
+    return $_[1]->{$_[0]};
 }
 
 
@@ -699,7 +683,8 @@ sub d_get_eenv
 # @array = user_keys_eenv()
 sub user_keys_eenv
 {
-    return values(%{$alias_ref});
+    # return values(%{$alias_ref});
+    return keys(%{$eenv});
 }
 
 # The real keys in %eenv for the local scope.
@@ -708,7 +693,8 @@ sub user_keys_eenv
 # This must return keys in the same order as raw_key.
 sub sys_keys_eenv
 {
-    return sort {$a cmp $b} keys(%{$alias_ref});
+    # return sort {$a cmp $b} keys(%{$alias_ref});
+    return sort {$a cmp $b} keys(%{$eenv});
 }
 
 
@@ -764,20 +750,15 @@ sub set_ref_eenv
 # exists_eenv($col)
 sub exists_eenv
 {
-    return exists($eenv->{alias($_[0])});
+    return exists($eenv->{$_[0]});
 }
 
 # Usage:
 # @array1  = @{slice_eenv(\@array2)}
 sub slice_eenv
 {
-    my @temp;
-    foreach my $val (@{$_[0]})
-    {
-	push(@temp, alias($val));
-    }
     my $hr = $eenv;
-    my @val = @{$hr}{@temp};
+    my @val = @{$hr}{@_};
     return \@val;
 }
 
@@ -823,6 +804,7 @@ sub raw_key
 # %new_ref_eenv = local_eenv(\@array);
 sub local_eenv
 {
+    die "local_eenv() not used\n";
     my %temp;
     # @temp{@_} = @eenv{@{$_[0]}};
     foreach my $key (@{$_[0]})
@@ -868,15 +850,6 @@ sub neg_slice_eenv
 sub clear_eenv
 {
     undef($eenv);
-#     my %temp;
-#     %eenv = %temp;
-
-#     foreach my $item (keys(%eenv))
-#     {
-# 	# Using %alias here seems like a mistake.
-# 	# $eenv{alias($item)} = undef;
-# 	$eenv{$item} = undef;
-#     }
 }
 
 # Usage:
@@ -889,8 +862,7 @@ sub scalar_eenv
 
 sub clear_var_eenv
 {
-    delete($eenv->{alias($_[0])});
-    clear_alias($_[0]);
+    delete($eenv->{$_[0]});
 }
 
 
@@ -3187,7 +3159,7 @@ sub dump_stream
 
         foreach my $item (@dcl)
         {
-            push(@sys_cols, alias($item));
+            push(@sys_cols, $item);
         }
 
 	foreach my $field (@sys_cols)

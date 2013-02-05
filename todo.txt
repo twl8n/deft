@@ -13,6 +13,8 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
+- fix dec_depth() to take all the same args as inc_depth().
+
 - (No.) Once we get table stack frames working with a deep copy, can we modify it to use references for all
   ancestors and avoid the deep copy and improve both speed and memory use? Probably not since when we make a
   new row, the only data duplicated that is not necessary is the top stack frame, not the ancestors, or at

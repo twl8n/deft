@@ -322,14 +322,53 @@ sub memoz
 }
 
 
-sub rewind
-{
-    next_rec();
 
-    # reset_stream();
-    # push(@{$streams[$::out_stream]}, get_ref_eenv());
+# Copy columns from the parent memoz record into the current (child) record. This should be called exclusively
+# from unwind(). This is the other end of memoz().
+
+sub copy_view_list
+{
+    my $parent_eeref = get_eenv("_memoz");
+    my $vl_ref = view_list();
+
+    # print "self: $eenv parent: $parent_eeref\n";
+    my $output ;
+    foreach my $var (@{$vl_ref})
+    {
+	$output .= " $var old: $eenv->{$var} new: $parent_eeref->{$var}\n";
+	$eenv->{$var} = $parent_eeref->{$var};
+    }
+    $eenv->{alias("_memoz")} = 0;
+    # print "cvl: $output\n";
 }
 
+sub rewind
+{
+
+}
+
+# Need the while(1) so that memoized rows will be processed via copy_view_list() and we'll get the next real
+# row of data. This depends on next and return which are very like goto. But this is not considered the least
+# bit harmful.
+
+sub unwind
+{
+    while(1)
+    {
+        if ($row_counter <= $#{$table[$#table]})
+        {
+            set_ref_eenv($table[$#table][$row_counter]);
+            $row_counter++;
+            if (get_eenv("_memoz"))
+            {
+                copy_view_list(); # sub above. Clears _memoz.
+                next;
+            }
+            return 1;
+        }
+        return 0;
+    }
+}
 
 # New unwind expects to have records marked for unwind. Records not
 # marked are duplicated from the memoize pass and will be updated
@@ -342,7 +381,7 @@ sub rewind
 # the next record. If curr_rec() returns zero, we are done unwinding.
 
 my $uw_last = 0;
-sub unwind
+sub xunwind
 {
     while (1)
     {
@@ -376,7 +415,6 @@ sub unwind
 		next;
 	    }
 	}
-	#rewind(); # return zero here and rewind above?
 	return 0;
     }
 }
