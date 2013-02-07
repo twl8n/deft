@@ -19,73 +19,85 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
     foreach my $rowc (0..3)
     {
         $table[$rowc][0] = {var1 => "v1: $rowc", var2=> "v2: $rowc", var3 => "v3: $rowc", _stream => $in_stream};
-
     }
 
+    # split, ala if-stmt
+
     my $max = $#table;
+    my %stname;
     foreach my $row (0.. $max)
     {
         my $hr = $table[$row][0];
-
         if ($hr->{var1} eq "v1: 1" || $hr->{var1} eq "v1: 2" )
         {
-            
-            # if an if-stmt has 1 row, and the nested if-stmt hits the same record, the outer code would never
-            # run.  This must duplicate the table. Probably every if-stmt should duplicate the table, or
-            # something.
-
-            # if the outer if-stmt creates rows, then those rows should be run tested by the inner if-stmt, so
-            # we can't pre-compile nested if-stmts this way.
-
-            $hr->{var1} .= "pie";
-            $hr->{_stream} = $in_stream+1;
-            my $newr = dclone(\@{$table[$row]});
-            $newr->[0]->{var1} = "new row from var1";
-            # don't change the clone's stream. It must be the same as the original. Right?
-            # $newr->[0]->{_stream} = $in_stream+1;
-            print "pushing $newr onto table of $row\n";
-            push(@table, $newr);
-
+            $hr->{_stream} = 'outer_if';
+            $stname{outer_if} = 1;
         }
-        else
+    }
+
+    # split, remainder ala else-stmt
+
+    $max = $#table;
+    foreach my $row (0.. $max)
+    {
+        my $hr = $table[$row][0];
+        if ($hr->{_stream} eq "0")
+        {
+            $hr->{_stream} = 'else';
+            $stname{else} = 1;
+        }
+    }
+
+    # start running code on the streams
+
+    # We can run the else now or later, it doesn't matter.
+    $max = $#table;
+    foreach my $row (0..$max)
+    {
+        my $hr = $table[$row][0];
+        if ($hr->{_stream} eq 'else')
         {
             $hr->{var1} .= "cake";
             $hr->{_stream} = $in_stream+2;
         }
     }
 
-    # Now we have a mixture of streams 1 and 2. Stream 1 still needs a (nested) if-stmt to run.
+    # inner oute if-stmt must run first.
+    $max = $#table;
+    foreach my $row (0.. $max)
+    {
+        my $hr = $table[$row][0];
+        if ($hr->{_stream} eq 'outer_if')
+        {
+            $hr->{var1} .= "pie";
+            my $newr = dclone(\@{$table[$row]});
+            $newr->[0]->{var1} = "new row from var1";
+            push(@table, $newr);
+        }
+    }
 
-    # The inner if-stmt. This will run on every row of $in_stream+1, even if there was only one row in that
-    # stream. The old, incorrect code failed to do this.
-
-    # if-stmt output stream is always in_stream+1, which here is in_stream+1+1.
+    # inner if-stmt must run second
 
     $max = $#table;
     foreach my $row (0.. $max)
     {
         my $hr = $table[$row][0];
-        if ($hr->{_stream} == $in_stream+1 && $hr->{var2} eq "v2: 2")
+        if ($hr->{_stream} eq 'outer_if' && $hr->{var2} eq "v2: 2")
             {
             $hr->{var2} .= " cheesecake";
-            $hr->{_stream} = $in_stream+1+1; 
-
             my $newr = dclone(\@{$table[$row]});
             $newr->[0]->{var1} = "new row from var2";
-            # don't change the clone's stream. It must be the same as the original. Right?
-            # $newr->[0]->{_stream} = $in_stream+1+1;
             push(@table, $newr);
         }
     }
 
-    # It is possible we still have some stream 1 records left, and that's fine.
+    # delete all the keys from stname
+    foreach my $key (keys(%stname))
+    {
+        delete($stname{$key});
+    }
 
-    # All nesting is done, so merge all the streams. Streams that did not go through the final if-stmt will
-    # have the original in_stream+1, so all of them need to be merged.
-
-    # Hey! We can merge back to stream zero. Streams really are just a stack-ish behavior which begs the
-    # question: Are streams the same or compatible stack with the stack-frame depth?
-
+    # Merge all the streams.
     $max = $#table;
     foreach my $row (0..$max)
     {
