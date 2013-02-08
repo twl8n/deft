@@ -13,6 +13,8 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
+- see try.pl for new stream splitting demo.
+
 - fix dec_depth() to take all the same args as inc_depth().
 
 - (No.) Once we get table stack frames working with a deep copy, can we modify it to use references for all

@@ -347,6 +347,40 @@ sub rewind
 
 }
 
+# Thinking out loud about how unwind could be a closure. This is probably not as good as simply replacing
+# unwind() with a for() loop that decrements.
+
+# my $unwind = init_unwind();
+# while (&{$unwind}() )
+# { 
+#  # do stuff
+# }
+
+
+sub init_unwind
+{
+    my $tmax = $#table;
+    my $row_counter = 0;
+    my $ unwind = sub
+    {
+        while(1)
+        {
+            if ($row_counter <= $tmax)
+            {
+                set_ref_eenv($table[$#table][$depth]);
+                $row_counter++;
+                if (get_eenv("_memoz"))
+                {
+                    copy_view_list(); # sub above. Clears _memoz.
+                    next;
+                }
+                return 1;
+            }
+            return 0;
+        }
+    }
+}
+
 # Need the while(1) so that memoized rows will be processed via copy_view_list() and we'll get the next real
 # row of data. This depends on next and return which are very like goto. But this is not considered the least
 # bit harmful.

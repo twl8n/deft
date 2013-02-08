@@ -11,6 +11,32 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 # This works with our lists of lists and may be faster than Storable.
 # use Clone qw(clone);
 
+# Using $#table works if we loop by decrementing, even if we are adding rows with push() inside the loop.
+if (0)
+{
+    my $in_stream = 0;
+    my @table;
+
+    foreach my $rowc (0..3)
+    {
+        $table[$rowc][0] = {var1 => "v1: $rowc", var2=> "v2: $rowc", var3 => "v3: $rowc", _stream => $in_stream};
+        print "$rowc\n";
+    }
+
+    for(my $rowc=$#table; $rowc >= 0; $rowc--)
+    {
+        print "$rowc\n";
+        # print "$rowc: " . Dumper(\$table[$rowc][0]) . "\n";
+        my $newr = dclone(\@{$table[$rowc]});
+        $newr->[0]->{var1} = "new row from var1 $rowc";
+        push(@table, $newr);
+    }
+
+    print Dumper(\@table);
+    exit();
+}
+
+
 {
     my $in_stream = 0;
 
@@ -23,9 +49,9 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 
     # split, ala if-stmt
 
-    my $max = $#table;
     my %stname;
-    foreach my $row (0.. $max)
+    # foreach my $row (0.. $max)
+    for(my $row=$#table; $row >= 0; $row--)
     {
         my $hr = $table[$row][0];
         if ($hr->{var1} eq "v1: 1" || $hr->{var1} eq "v1: 2" )
@@ -37,8 +63,9 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 
     # split, remainder ala else-stmt
 
-    $max = $#table;
-    foreach my $row (0.. $max)
+    # $max = $#table;
+    # foreach my $row (0.. $max)
+    for(my $row=$#table; $row >= 0; $row--)
     {
         my $hr = $table[$row][0];
         if ($hr->{_stream} eq "0")
@@ -51,8 +78,9 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
     # start running code on the streams
 
     # We can run the else now or later, it doesn't matter.
-    $max = $#table;
-    foreach my $row (0..$max)
+    # $max = $#table;
+    # foreach my $row (0..$max)
+    for(my $row=$#table; $row >= 0; $row--)
     {
         my $hr = $table[$row][0];
         if ($hr->{_stream} eq 'else')
@@ -63,8 +91,9 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
     }
 
     # inner oute if-stmt must run first.
-    $max = $#table;
-    foreach my $row (0.. $max)
+    # $max = $#table;
+    # foreach my $row (0.. $max)
+    for(my $row=$#table; $row >= 0; $row--)
     {
         my $hr = $table[$row][0];
         if ($hr->{_stream} eq 'outer_if')
@@ -78,8 +107,9 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 
     # inner if-stmt must run second
 
-    $max = $#table;
-    foreach my $row (0.. $max)
+    # $max = $#table;
+    # foreach my $row (0.. $max)
+    for(my $row=$#table; $row >= 0; $row--)
     {
         my $hr = $table[$row][0];
         if ($hr->{_stream} eq 'outer_if' && $hr->{var2} eq "v2: 2")
@@ -98,8 +128,9 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
     }
 
     # Merge all the streams.
-    $max = $#table;
-    foreach my $row (0..$max)
+    # $max = $#table;
+    # foreach my $row (0..$max)
+    for(my $row=$#table; $row >= 0; $row--)
     {
         my $hr = $table[$row][0];
         $hr->{_stream} = 0;
@@ -108,8 +139,9 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
     # A new line of deft code.
     # Add a new column. No nesting, no cloning rows.
 
-    $max = $#table;
-    foreach my $row (0..$max)
+    # $max = $#table;
+    # foreach my $row (0..$max)
+    for(my $row=$#table; $row >= 0; $row--)
     {
         my $hr = $table[$row][0];
         $hr->{var4} = "new col $row";
