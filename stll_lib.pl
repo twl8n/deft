@@ -321,8 +321,6 @@ sub memoz
     $curr_eeref = $orig_eeref;
 }
 
-
-
 # Copy columns from the parent memoz record into the current (child) record. This should be called exclusively
 # from unwind(). This is the other end of memoz().
 
@@ -335,11 +333,14 @@ sub copy_view_list
     my $output ;
     foreach my $var (@{$vl_ref})
     {
-	$output .= " $var old: $eenv->{$var} new: $parent_eeref->{$var}\n";
-	$eenv->{$var} = $parent_eeref->{$var};
+	# $output .= " $var old: ". $eenv->{$var} new: $parent_eeref->{$var}\n";
+	# $eenv->{$var} = $parent_eeref->{$var};
+	$output .= " $var old: ". get_eenv($var) . " new: $parent_eeref->{$var}\n";
+	set_eenv($var, $parent_eeref->{$var});
     }
-    $eenv->{alias("_memoz")} = 0;
-    # print "cvl: $output\n";
+    # $eenv->{alias("_memoz")} = 0;
+    set_eenv('_memoz', 0);
+
 }
 
 sub rewind
@@ -359,9 +360,11 @@ sub rewind
 
 sub init_unwind
 {
+    my @table;
+    my $depth;
     my $tmax = $#table;
     my $row_counter = 0;
-    my $ unwind = sub
+    my $unwind = sub
     {
         while(1)
         {
@@ -385,8 +388,12 @@ sub init_unwind
 # row of data. This depends on next and return which are very like goto. But this is not considered the least
 # bit harmful.
 
+# dummy, maybe real, thinking out loud
+my $row_counter;
 sub unwind
 {
+    # dummy for clean compile
+    my @table;
     while(1)
     {
         if ($row_counter <= $#{$table[$#table]})
