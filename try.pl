@@ -12,10 +12,13 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 # use Clone qw(clone);
 
 # Using $#table works if we loop by decrementing, even if we are adding rows with push() inside the loop.
-if (0)
+
+
+my @table;
+
+if (1)
 {
     my $in_stream = 0;
-    my @table;
 
     foreach my $rowc (0..3)
     {
@@ -23,13 +26,16 @@ if (0)
         print "$rowc\n";
     }
 
-    for(my $rowc=$#table; $rowc >= 0; $rowc--)
+    (my $unwind, my $reset, my $clone) = init_unwind();
+
+    my $rowc = 0;
+    &{$reset}();
+    while (my $hr = &{$unwind}())
     {
-        print "$rowc\n";
-        # print "$rowc: " . Dumper(\$table[$rowc][0]) . "\n";
-        my $newr = dclone(\@{$table[$rowc]});
-        $newr->[0]->{var1} = "new row from var1 $rowc";
-        push(@table, $newr);
+        print "inside while\n";
+        my $hr = &{$clone}();
+        $hr->{var1} = "new row from var1 $rowc";
+        $rowc++;
     }
 
     print Dumper(\@table);
@@ -41,19 +47,20 @@ if (0)
     my $in_stream = 0;
 
     my @table;
+    my $depth = 0;
 
     foreach my $rowc (0..3)
     {
-        $table[$rowc][0] = {var1 => "v1: $rowc", var2=> "v2: $rowc", var3 => "v3: $rowc", _stream => $in_stream};
+        $table[$rowc][$depth] = {var1 => "v1: $rowc", var2=> "v2: $rowc", var3 => "v3: $rowc", _stream => $in_stream};
     }
 
     # split, ala if-stmt
 
     my %stname;
-    # foreach my $row (0.. $max)
+
     for(my $row=$#table; $row >= 0; $row--)
     {
-        my $hr = $table[$row][0];
+        my $hr = $table[$row][$depth];
         if ($hr->{var1} eq "v1: 1" || $hr->{var1} eq "v1: 2" )
         {
             $hr->{_stream} = 'outer_if';
@@ -61,13 +68,11 @@ if (0)
         }
     }
 
-    # split, remainder ala else-stmt
+    # The still rows in stream zero are the remainder ala else-stmt.
 
-    # $max = $#table;
-    # foreach my $row (0.. $max)
     for(my $row=$#table; $row >= 0; $row--)
     {
-        my $hr = $table[$row][0];
+        my $hr = $table[$row][$depth];
         if ($hr->{_stream} eq "0")
         {
             $hr->{_stream} = 'else';
@@ -78,11 +83,10 @@ if (0)
     # start running code on the streams
 
     # We can run the else now or later, it doesn't matter.
-    # $max = $#table;
-    # foreach my $row (0..$max)
+
     for(my $row=$#table; $row >= 0; $row--)
     {
-        my $hr = $table[$row][0];
+        my $hr = $table[$row][$depth];
         if ($hr->{_stream} eq 'else')
         {
             $hr->{var1} .= "cake";
@@ -91,32 +95,29 @@ if (0)
     }
 
     # inner oute if-stmt must run first.
-    # $max = $#table;
-    # foreach my $row (0.. $max)
+
     for(my $row=$#table; $row >= 0; $row--)
     {
-        my $hr = $table[$row][0];
+        my $hr = $table[$row][$depth];
         if ($hr->{_stream} eq 'outer_if')
         {
             $hr->{var1} .= "pie";
             my $newr = dclone(\@{$table[$row]});
-            $newr->[0]->{var1} = "new row from var1";
+            $newr->[$depth]->{var1} = "new row from var1";
             push(@table, $newr);
         }
     }
 
     # inner if-stmt must run second
 
-    # $max = $#table;
-    # foreach my $row (0.. $max)
     for(my $row=$#table; $row >= 0; $row--)
     {
-        my $hr = $table[$row][0];
+        my $hr = $table[$row][$depth];
         if ($hr->{_stream} eq 'outer_if' && $hr->{var2} eq "v2: 2")
-            {
+        {
             $hr->{var2} .= " cheesecake";
             my $newr = dclone(\@{$table[$row]});
-            $newr->[0]->{var1} = "new row from var2";
+            $newr->[$depth]->{var1} = "new row from var2";
             push(@table, $newr);
         }
     }
@@ -128,22 +129,19 @@ if (0)
     }
 
     # Merge all the streams.
-    # $max = $#table;
-    # foreach my $row (0..$max)
+
     for(my $row=$#table; $row >= 0; $row--)
     {
-        my $hr = $table[$row][0];
+        my $hr = $table[$row][$depth];
         $hr->{_stream} = 0;
     }
 
     # A new line of deft code.
     # Add a new column. No nesting, no cloning rows.
 
-    # $max = $#table;
-    # foreach my $row (0..$max)
     for(my $row=$#table; $row >= 0; $row--)
     {
-        my $hr = $table[$row][0];
+        my $hr = $table[$row][$depth];
         $hr->{var4} = "new col $row";
         
         # No nesting or subs so no need to inc the stream.
@@ -308,7 +306,7 @@ sub mainx
 
 }
 
-sub init_unwind
+sub xinit_unwind
 {
 
     my $flag_1 = 1;
@@ -389,3 +387,44 @@ sub  main1
     print "ok\n";
 }
 
+sub init_unwind
+{
+    my $depth = 0;
+    my $rowc = $#table+1;
+
+    my $unwind = sub
+    {
+        print "unwind: $rowc\n";
+        while($rowc >= 0)
+        {
+            $rowc--;
+            my $hr = ($table[$rowc][$depth]);
+            # if (get_eenv("_memoz"))
+            # {
+            #     copy_view_list(); # sub above. Clears _memoz.
+            #     next;
+            # }
+            if ($rowc >= 0)
+            {
+                return $hr;
+            }
+            return undef;
+        }
+        return undef;
+    };
+    
+    my $clone = sub
+    {
+        my $newr = dclone(\@{$table[$rowc]});
+        push(@table, $newr);
+        return \%{$table[$#table][$depth]};
+    };
+
+    my $reset = sub
+    {
+        print "resetting\n";
+        $rowc = $#table+1;
+        $depth = 0;
+    };
+    return ($unwind, $reset, $clone);
+}
