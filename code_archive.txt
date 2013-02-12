@@ -1,3 +1,48 @@
+
+sub init_unwind
+{
+    my $depth = 0;
+    my $rowc = $#table+1;
+
+    my $unwind = sub
+    {
+        print "unwind: $rowc\n";
+        while($rowc >= 0)
+        {
+            $rowc--;
+            my $hr = ($table[$rowc][$depth]);
+            # if (get_eenv("_memoz"))
+            # {
+            #     copy_view_list(); # sub above. Clears _memoz.
+            #     next;
+            # }
+            if ($rowc >= 0)
+            {
+                return $hr;
+            }
+            return undef;
+        }
+        return undef;
+    };
+    
+    my $clone = sub
+    {
+        my $newr = dclone(\@{$table[$rowc]});
+        push(@table, $newr);
+        return \%{$table[$#table][$depth]};
+    };
+
+    my $reset = sub
+    {
+        print "resetting\n";
+        $rowc = $#table+1;
+        $depth = 0;
+    };
+    return ($unwind, $reset, $clone);
+}
+
+
+
 #
 # Caching version of opening a db connection
 # for the Deft system's internal use.

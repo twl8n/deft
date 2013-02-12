@@ -15,6 +15,8 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 
 
 my @table;
+my $rowc = 0;
+my $depth = 0;
 
 if (1)
 {
@@ -26,14 +28,12 @@ if (1)
         print "$rowc\n";
     }
 
-    (my $unwind, my $reset, my $clone) = init_unwind();
-
     my $rowc = 0;
-    &{$reset}();
-    while (my $hr = &{$unwind}())
+    treset();
+    while (my $hr = unwind())
     {
         print "inside while\n";
-        my $hr = &{$clone}();
+        my $hr = clone();
         $hr->{var1} = "new row from var1 $rowc";
         $rowc++;
     }
@@ -387,44 +387,41 @@ sub  main1
     print "ok\n";
 }
 
-sub init_unwind
+sub unwind
 {
-    my $depth = 0;
-    my $rowc = $#table+1;
-
-    my $unwind = sub
+    print "unwind: $rowc\n";
+    while ($rowc >= 0)
     {
-        print "unwind: $rowc\n";
-        while($rowc >= 0)
+        $rowc--;
+        my $hr = ($table[$rowc][$depth]);
+        # if (get_eenv("_memoz"))
+        # {
+        #     copy_view_list(); # sub above. Clears _memoz.
+        #     next;
+        # }
+        if ($rowc >= 0)
         {
-            $rowc--;
-            my $hr = ($table[$rowc][$depth]);
-            # if (get_eenv("_memoz"))
-            # {
-            #     copy_view_list(); # sub above. Clears _memoz.
-            #     next;
-            # }
-            if ($rowc >= 0)
-            {
-                return $hr;
-            }
-            return undef;
+            return $hr;
         }
         return undef;
-    };
-    
-    my $clone = sub
-    {
-        my $newr = dclone(\@{$table[$rowc]});
-        push(@table, $newr);
-        return \%{$table[$#table][$depth]};
-    };
-
-    my $reset = sub
-    {
-        print "resetting\n";
-        $rowc = $#table+1;
-        $depth = 0;
-    };
-    return ($unwind, $reset, $clone);
+    }
+    return undef;
 }
+
+sub clone
+{
+    my $newr = dclone(\@{$table[$rowc]});
+    push(@table, $newr);
+    return \%{$table[$#table][$depth]};
+}
+
+# There is an existing function reset() so we have to use another name.
+# Conflicting functions silently fail.
+sub treset
+{
+    print "resetting\n";
+    $rowc = $#table+1;
+    $depth = 0;
+}
+
+

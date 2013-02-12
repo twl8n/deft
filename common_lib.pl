@@ -31,17 +31,17 @@ use session_lib;
 my @sub_stack;
 
 # my %old_vars;  # hash of var names and their depth, use by garbage_collection()
-#my @depth_vars; # list of lists
+# my @depth_vars; # list of lists
+
 my $main_str = "main:"; # this changes way too often.
-# my $depth = 1;   # unused, see $#tablecurrent depth
+my @table;       # the table $table[row][depth]
+my $depth = 0;   # unused, see $#tablecurrent depth
 my %deft_func;   # See sub initdeft
-# my %eenv;
-my $eenv;         # Hash ref
+
+my $eenv;        # Hash ref of the current row
 my %is_dsub;     # key is sub name, value is 1
 my %args;        # key is sub name, value is a hash of arg names.
 my %is_top;      # indexes of Deft (table operating) subs.
-# my @alias_stack; # list of alias hash references.
-# my $alias_ref;   # ref to the current col name alias hash.
 
 my $tc = 1; # valid wrap values are non-zero
 my $wrap_scalar = $tc++;

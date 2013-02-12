@@ -348,70 +348,55 @@ sub rewind
 
 }
 
-# Thinking out loud about how unwind could be a closure. This is probably not as good as simply replacing
-# unwind() with a for() loop that decrements.
-
-# my $unwind = init_unwind();
-# while (&{$unwind}() )
-# { 
-#  # do stuff
-# }
-
-
-sub init_unwind
-{
-    my @table;
-    my $depth;
-    my $tmax = $#table;
-    my $row_counter = 0;
-    my $unwind = sub
-    {
-        while(1)
-        {
-            if ($row_counter <= $tmax)
-            {
-                set_ref_eenv($table[$#table][$depth]);
-                $row_counter++;
-                if (get_eenv("_memoz"))
-                {
-                    copy_view_list(); # sub above. Clears _memoz.
-                    next;
-                }
-                return 1;
-            }
-            return 0;
-        }
-    }
-}
+# There is a closure unwind in code_archive.txt.
 
 # Need the while(1) so that memoized rows will be processed via copy_view_list() and we'll get the next real
 # row of data. This depends on next and return which are very like goto. But this is not considered the least
 # bit harmful.
 
-# dummy, maybe real, thinking out loud
-my $row_counter;
+my $rowc;
 sub unwind
 {
-    # dummy for clean compile
-    my @table;
-    while(1)
+    print "unwind: $rowc\n";
+    while ($rowc >= 0)
     {
-        if ($row_counter <= $#{$table[$#table]})
+        $rowc--;
+        my $hr = ($table[$rowc][$depth]);
+        # if (get_eenv("_memoz"))
+        # {
+        #     copy_view_list(); # sub above. Clears _memoz.
+        #     next;
+        # }
+        if ($rowc >= 0)
         {
-            set_ref_eenv($table[$#table][$row_counter]);
-            $row_counter++;
-            if (get_eenv("_memoz"))
-            {
-                copy_view_list(); # sub above. Clears _memoz.
-                next;
-            }
-            return 1;
+            return $hr;
         }
-        return 0;
+        return undef;
     }
+    return undef;
 }
 
-# New unwind expects to have records marked for unwind. Records not
+sub clone
+{
+    my $newr = dclone(\@{$table[$rowc]});
+    push(@table, $newr);
+    return \%{$table[$#table][$depth]};
+}
+
+# There is an existing function reset() so we have to use another name.
+# Conflicting functions silently fail.
+
+sub treset
+{
+    print "resetting\n";
+    $rowc = $#table+1;
+    $depth = 0;
+}
+
+
+
+
+# (old) New unwind expects to have records marked for unwind. Records not
 # marked are duplicated from the memoize pass and will be updated
 # during rewind.
 
