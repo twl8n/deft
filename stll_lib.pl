@@ -27,6 +27,7 @@ use DBI  qw(:sql_types);
 use Storable qw(freeze thaw);
 #use Cwd qw(abs_path getcwd);
 use Data::Dumper;
+use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 
 
 # Locally scoped globals necessary
@@ -34,6 +35,12 @@ use Data::Dumper;
 
 my $stream_head = 0;
 my $curr_eeref = 0;
+
+# Holds current row counter in @table.
+my $rowc = 1;
+
+# The data table. Probably don't need curr_eeref or stream_head.
+my @table;
 
 # Clean up from wrong_think_memoizing_rewind(). See wrong_think_memoizing_rewind below.
 sub postusevars
@@ -57,43 +64,46 @@ sub go_unwind
 
 sub insert_rec
 {
-    my %new_data;
-    if (! $stream_head)
-    {
-	$stream_head = \%new_data;
-	$curr_eeref = $stream_head;
-	set_ref_eenv($stream_head);
-	set_eenv("_next_rec", 0);
-	set_eenv("_prev_rec", 0);
-	set_eenv("_last_rec", 0);
-    }
-    else
-    {
-	# New record becomes the new head. Old head becomes the next
-	# (second) rec.
-	my $next_rec = $stream_head;
-	$stream_head = \%new_data;
-	set_ref_eenv($next_rec);
-	set_eenv("_prev_rec", $stream_head);
-	set_ref_eenv($stream_head);
-	set_eenv("_next_rec", $next_rec);
-	set_eenv("_last_rec", 0);
-	set_eenv("_prev_rec", 0);
-    }
-    # No need to return anything, because the $stream_head is always
-    # the new record. 
+    my $hr = clone();
+    set_ref_eenv($hr);
+
+    # old:
+    # my %new_data;
+    # if (! $stream_head)
+    # {
+    #     $stream_head = \%new_data;
+    #     $curr_eeref = $stream_head;
+    #     set_ref_eenv($stream_head);
+    #     set_eenv("_next_rec", 0);
+    #     set_eenv("_prev_rec", 0);
+    #     set_eenv("_last_rec", 0);
+    # }
+    # else
+    # {
+    #     # New record becomes the new head. Old head becomes the next
+    #     # (second) rec.
+    #     my $next_rec = $stream_head;
+    #     $stream_head = \%new_data;
+    #     set_ref_eenv($next_rec);
+    #     set_eenv("_prev_rec", $stream_head);
+    #     set_ref_eenv($stream_head);
+    #     set_eenv("_next_rec", $next_rec);
+    #     set_eenv("_last_rec", 0);
+    #     set_eenv("_prev_rec", 0);
+    # }
+    # # No need to return anything, because the $stream_head is always
+    # # the new record. 
 }
-
-
-
 
 sub dup_insert
 {
     # What should happen if we are asked to dup_insert when there
     # is no record to dup?
 
-    insert_rec();
-    copy_eenv( $_[0], stream_head());
+    clone();
+
+    # insert_rec();
+    # copy_eenv( $_[0], stream_head());
 }
 
 sub stream_head
@@ -103,17 +113,26 @@ sub stream_head
 
 sub curr_rec
 {
-    # This might have been a debug and not real code. Zero is the
-    # value for no more records.
-    
-    # Previously, the if-die was in unwind(). If unwind() doesn't want
-    # a zero value, then noone else does either.
-    if ($curr_eeref == 0)
+    # If there aren't any table rows, create one.
+    if ($#table == -1)
     {
-        # die;
+        return clone();
     }
-    return $curr_eeref;
+    return \%{$table[$#table][get_depth()]};
+
+    # Old:
+    # # This might have been a debug and not real code. Zero is the
+    # # value for no more records.
+    
+    # # Previously, the if-die was in unwind(). If unwind() doesn't want
+    # # a zero value, then noone else does either.
+    # if ($curr_eeref == 0)
+    # {
+    #     # die;
+    # }
+    # return $curr_eeref;
 }
+
 
 
 # Move a record to the stream head, and set the _last_rec if
@@ -229,7 +248,9 @@ sub next_rec
 
 sub reset_stream
 {
-    $curr_eeref = $stream_head;
+    treset();
+    # Not used? Still compiled in.
+    # $curr_eeref = $stream_head;
 }
 
 
@@ -283,10 +304,12 @@ sub set_view_list
 
 sub memoz
 {
+    # this need a full rewrite.
+    return ;
+
     my %rec_keys;
     my $vlist_r = view_list();
     print "vlr: " . Dumper($vlist_r) . "\n";
-    da();
     print "getting eeref\n";
     my $eeref = curr_rec();
     my $orig_eeref = $eeref;
@@ -345,7 +368,7 @@ sub copy_view_list
 
 sub rewind
 {
-
+    
 }
 
 # There is a closure unwind in code_archive.txt.
@@ -354,22 +377,24 @@ sub rewind
 # row of data. This depends on next and return which are very like goto. But this is not considered the least
 # bit harmful.
 
-my $rowc;
 sub unwind
 {
-    print "unwind: $rowc\n";
-    while ($rowc >= 0)
+    # print "unwind: $rowc max: $#table\n";
+    # In try.pl we needed >=
+    # while ($rowc >= 0)
+    while ($rowc > 0)
     {
         $rowc--;
-        my $hr = ($table[$rowc][$depth]);
-        # if (get_eenv("_memoz"))
-        # {
-        #     copy_view_list(); # sub above. Clears _memoz.
-        #     next;
-        # }
+        set_ref_eenv(($table[$rowc][get_depth()]));
+        if (get_eenv("_memoz"))
+        {
+            copy_view_list(); # sub above. Clears _memoz.
+            next;
+        }
         if ($rowc >= 0)
         {
-            return $hr;
+            # return $hr;
+            return 1;
         }
         return undef;
     }
@@ -378,22 +403,31 @@ sub unwind
 
 sub clone
 {
-    my $newr = dclone(\@{$table[$rowc]});
+    # See dup_insert() used in dcslib.pl sub read_tab_data(). Might be an older version of clone.
+
+    # A oneliner to try an anon list of hash
+    # perl -e 'use Data::Dumper; $newr = [{}]; print Dumper($newr);'
+
+    # Probably only not defined when get_depth() returns zero. Otherwise might be trouble.
+
+    my $newr = [{}];
+    if (defined($table[$rowc]))
+    {
+        $newr = dclone(\@{$table[$rowc]});
+    }
     push(@table, $newr);
-    return \%{$table[$#table][$depth]};
+    # print "cloned new table max index: $#table\n";
+    return \%{$table[$#table][get_depth()]};
 }
 
-# There is an existing function reset() so we have to use another name.
-# Conflicting functions silently fail.
+# There is an existing Perl keyword reset() so we have to use another name.
+# Conflicting keyword silently fails in this case. 
 
 sub treset
 {
-    print "resetting\n";
+    # print "resetting\n";
     $rowc = $#table+1;
-    $depth = 0;
 }
-
-
 
 
 # (old) New unwind expects to have records marked for unwind. Records not

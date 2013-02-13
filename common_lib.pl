@@ -213,6 +213,8 @@ sub duc
 
 sub rerel
 {
+    # Needs some commentary.
+
     my @ttable;
     while(unwind_simple())
     {
@@ -383,7 +385,6 @@ sub cgi_make_row
 }
 
 
-
 # dec 28 2006 currently in use, and has been used for some time
 # Clean up local cols created by Deft subroutines.
 # The original version relied on %depth_vars to track which vars
@@ -396,7 +397,11 @@ sub cgi_make_row
 
 sub garbage_collection
 {
-
+    # We don't have extra columns from call deft subs. If that was all this did, we don't need it.
+    my @clist = caller(0); 
+    my $msg = "Error in gc $clist[3] called from $clist[1] line $clist[2], died";
+    write_log("$msg");
+    return;
     my $collect = pop(@sub_stack);
     my %unique;
     my @key_list;
@@ -488,35 +493,35 @@ sub garbage_collection
 #     print "alias_ref: " . Dumper($alias_ref) . "\n";
 # }
 
-sub xinc_depth
-{
-    # This creates a hash to link a local alias name with the actual
-    # depth.field in the table. It links the function call with the
-    # function prototype. 'str' => '1.model'.
-    push(@alias_stack, $alias_ref); 
-    # See note id2 above.
-    my %new_alias;
-    while(@_)
-    {
-	my $proto = shift(@_);
-	my $arg = shift(@_);
-	# See note id1 above.
-	if (! exists($alias_ref->{$proto}))
-	{
-	    my $output = "unknown arg $arg depth:". get_depth() . "\n";
-	    $output .= "proto:$proto\n";
+# sub xinc_depth
+# {
+#     # This creates a hash to link a local alias name with the actual
+#     # depth.field in the table. It links the function call with the
+#     # function prototype. 'str' => '1.model'.
+#     push(@alias_stack, $alias_ref); 
+#     # See note id2 above.
+#     my %new_alias;
+#     while(@_)
+#     {
+# 	my $proto = shift(@_);
+# 	my $arg = shift(@_);
+# 	# See note id1 above.
+# 	if (! exists($alias_ref->{$proto}))
+# 	{
+# 	    my $output = "unknown arg $arg depth:". get_depth() . "\n";
+# 	    $output .= "proto:$proto\n";
 
-	    foreach my $key (keys(%{$alias_ref}))
-	    {
-		$output .= "$key:$alias_ref->{$key}\n";
-	    }
-	    die $output;
-	}
-	$new_alias{$arg} = $alias_ref->{$proto};
-    }
-    $depth++;
-    $alias_ref = \%new_alias;
-}
+# 	    foreach my $key (keys(%{$alias_ref}))
+# 	    {
+# 		$output .= "$key:$alias_ref->{$key}\n";
+# 	    }
+# 	    die $output;
+# 	}
+# 	$new_alias{$arg} = $alias_ref->{$proto};
+#     }
+#     $depth++;
+#     $alias_ref = \%new_alias;
+# }
 
 sub inc_depth
 {
@@ -540,6 +545,8 @@ sub dec_depth
 {
     # The decrement happens in garbage_collection(). We do pop
     # @sub_stack in garbage_collection(). Anywhere else?
+    my @proto;
+    my @arg;
     while(@_)
     {
        push(@proto, shift(@_));
@@ -581,7 +588,7 @@ sub get_depth
 
 
 # Usage:
-# set_eenv(col, value)
+# set_eenv("col", value)
 # Try to look up the aliased name. If we don't
 # find it, we must be initializing (instantiating) a local variable.
 # This is a good place to init a local var. We simply need to
@@ -597,17 +604,23 @@ sub set_eenv
 	my @clist = caller(0); 
 	die "null eenv in set_eenv $clist[3] called from $clist[1] line $clist[2], died";
     }
-    if (! exists($eenv{$_[0]}))
-    {
-	die "Error: non existing var in set_eenv: $_[0]\n";
-    }
+    # feb 12 2013 commented out because it appears to prevent creating a new column
+    # if (! exists($eenv{$_[0]}))
+    # {
+    #     die "Error: non existing var in set_eenv: $_[0]\n";
+    # }
     $eenv->{$_[0]} = $_[1];
 }
+
 
 # Copy all the non-internal cols from one record to another.
 # Usage: copy_eenv($orig_ref_eenv, $dest_ref_eenv);
 sub copy_eenv
 {
+    my @clist = caller(0); 
+    my $msg = "Error in copy_eenv $clist[3] called from $clist[1] line $clist[2], died";
+    die "copy_eenv() called. Should used clone() instead.\n$msg\n";
+
     foreach my $item (keys(%{$_[0]}))
     {
 	# Don't overwrite internal vars. It might be better to use
@@ -632,7 +645,7 @@ sub set_all_eenv
 
 
 # Usage:
-# value = get_eenv(col)
+# value = get_eenv("col")
 # raw_key() below also gets values directly from %eenv.
 sub get_eenv
 {
@@ -647,16 +660,17 @@ sub get_eenv
     {
 	return $eenv->{$_[0]};
     }
-    else
-    {
-	if ($_[0] eq "_old_next")
-	{
-	    my @clist = caller(0); 
-	    die "don't have col $_[0] $clist[3] called from $clist[1] line $clist[2], died";
-	}
-	return undef;
-	die "don't have column $_[0]";
-    }
+    return undef;
+
+    # memoz() is called which calls slice_eenv() before a column is even created in a new row. We need to be
+    # able to gracefully slice for non-existent cols.
+
+    # else
+    # {
+    #     my @clist = caller(0); 
+    #     die "don't have col $_[0] $clist[3] called from $clist[1] line $clist[2], died";
+    #     return undef;
+    # }
 }
 
 
@@ -726,9 +740,7 @@ sub freeze_eenv
 
 
 # Usage: set_ref_eenv(\%eenv_copy)
-
-# Feb 5 2010 At the moment, zero is valid we unwind runs out of
-# records, in order to prevent changes to the previous record.
+# set_ref_eenv($#table[$rowc][$depth]);
 
 # Make the global $eenv a particular record of our choosing, and we
 # better choose a eeref from something like popping the stream.
@@ -1622,6 +1634,7 @@ sub add_unions
 my $if_fmt = '{
 set_view_list(%s);
 memoz();
+treset(); # 
 while( unwind())
 {
 # get local (get cols)
@@ -1764,6 +1777,7 @@ sub gen_agg
 my $gs_fmt = '{
 set_view_list(%s);
 memoz();
+treset();
 while ( unwind())
 {
 # get cols
@@ -3144,13 +3158,12 @@ sub dump_stream
         @dcl = sort(user_keys_eenv());
     }
 
-    print "dcl: @dcl\n";
-    
     my @recs;
     my %field_names;
     my $count = 0;
     set_view_list(@dcl);
     memoz();
+    treset();
     while(unwind())
     {
 	my @sys_cols;
@@ -3289,6 +3302,7 @@ sub distinct_on
     my %row_val;
 
     my %urh;
+    treset();
     while(unwind(\%urh))
     {
 	my $key;
@@ -3346,6 +3360,7 @@ sub rows
 {
     my $xx = 0;
     my %urh;
+    treset();
     while(unwind(\%urh))
     {
 	$xx++;
@@ -3358,6 +3373,7 @@ sub rows
 sub delete
 {
     my %urh;
+    treset();
     while(unwind(\%urh))
     {
 	# Nothing here.
@@ -3388,6 +3404,7 @@ sub crush_on
     my %row_val;
 
     my %urh;
+    treset();
     while(unwind(\%urh))
     {
 	my $key;
@@ -3477,6 +3494,7 @@ sub mean
     my $sum = 0;
     my $count = 0;
     my %urh;
+    treset();
     while(unwind(\%urh))
     {
 	push(@rows, get_ref_eenv());
@@ -3514,6 +3532,7 @@ sub naive_make_row
     # my @files = `/usr/bin/find $dir -name \"$proto\"`;
 
     my %urh;
+    treset();
     while(unwind(\%urh))
     {
 	my $eval_str = get_eenv($eval_col);

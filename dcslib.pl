@@ -184,14 +184,15 @@ sub read_tab_data
 {
     my $data_file = shift(@_); # yank off $_[0]
     my @va = @_;
-
+    
     my($temp);
     my @fields;
-
+    
     # Crossmultiply incoming stream with new input.
     # Normally, there is only one incoming record.
-
+    
     my $log_flag = 0;
+    treset();
     while(unwind())
     {
 	if (! open(IN, "<",  $data_file))
@@ -225,10 +226,12 @@ sub read_tab_data
 		{
 		    $temp .= "\n";
 		}
+
 		if (! $first)
 		{
-		    dup_insert(curr_rec());
-		    set_ref_eenv(stream_head());
+                    # dup_insert(curr_rec());
+                    my $hr = clone();
+                    set_ref_eenv($hr);
 		}
 		$first = 0;
 		for(my $xx=0; $xx<=$#va && $temp; $xx++)
@@ -237,9 +240,9 @@ sub read_tab_data
                     # columns, the missing columns will have the value of the
                     # last column that existed. This is the old regex $1
                     # problem.
-
-		    $temp =~ s/(.*?)[\t\n]//;
-		    set_eenv($va[$xx], $1);
+                    
+                    $temp =~ s/(.*?)[\t\n]//;
+                    set_eenv($va[$xx], $1);
 		}
 	    }
 	}
