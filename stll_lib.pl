@@ -382,6 +382,7 @@ sub unwind
 }
 
 
+# Stream specific unwind. s_unwind(2) will only unwind rows in stream 2.
 sub s_unwind
 {
     # print "unwind: $rowc max: $#table\n";
@@ -409,7 +410,26 @@ sub s_unwind
     return undef;
 }
 
-
+sub tell_streams
+{
+    treset();
+    my %stname;
+    while(unwind())
+    {
+        if (! exists($stname{get_eenv('_stream')}))
+        {
+            $stname{get_eenv('_stream')} = 1;
+        }
+    }
+    print "Active streams: ";
+    my $tween = "";
+    foreach my $key (sort(keys(%stname)))
+    {
+        print "$tween$key";
+        $tween = ", ";
+    }
+    print "\n";
+}
 
 sub clone
 {
