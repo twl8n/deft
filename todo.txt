@@ -13,6 +13,33 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
+- discuss: maybe unwind() should alway take a stream number. Always. When you want to operate on all streams,
+  you must explicitly merge. This would certainly be much safe for human-crafted code.
+
+- + change try_rewind.pl to a table demo that requires stll_lib.pl and common_lib.pl
+
+# _stream and _old are lists whose lengths will be compared
+
+- discuss: change stack frame counter from $depth to $frame? $frame is already in stll_lib.pl
+
+- change arg order of inc_depth() in the compiler and in the sub. Need two lists.
+
+- add the hash slice and cloning code to inc_depth(); for every row in the table
+
+ @{$table[$row][1]}{qw/xxx1 xxx2/} = @{$table[$row][0]}{qw/var1 var2/};
+
+- put the depth resolution code into dec_depth(); 
+
+        foreach my $row (0..$#table)
+        {
+            # Use hash slice as both lvalue and value.
+            @{$table[$row][0]}{qw/var1 var2/} = @{$table[$row][1]}{qw/xxx1 xxx2/};
+            pop(@{$table[$row]});
+        }
+
+- Get Noah to point to the code that requires the all stack frames to be in every row, and not just the
+  current and previous. Seems like this might be a non-issue.
+
 - see try.pl for new stream splitting demo.
 
 - put in reset() for reset_stream() everywhere?

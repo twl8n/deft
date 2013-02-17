@@ -33,6 +33,7 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 # Locally scoped globals necessary
 # for the single process version of rewind.
 
+my $frame = 0;   # stack frame $table[row][frame]
 my $stream_head = 0;
 my $curr_eeref = 0;
 
@@ -59,56 +60,36 @@ sub go_unwind
 }
 
 
-# Insert a record at the stream head. No return. Call stream_head() to
-# get the eeref of the new record.
+# Insert a new, empty record. Should only be called as part of table initialization.
+# Set the eeref of the new record.
+
+sub dumpt
+{
+    return Dumper(\@table);
+}
 
 sub insert_rec
 {
-    my $hr = clone();
-    set_ref_eenv($hr);
-
-    # old:
-    # my %new_data;
-    # if (! $stream_head)
-    # {
-    #     $stream_head = \%new_data;
-    #     $curr_eeref = $stream_head;
-    #     set_ref_eenv($stream_head);
-    #     set_eenv("_next_rec", 0);
-    #     set_eenv("_prev_rec", 0);
-    #     set_eenv("_last_rec", 0);
-    # }
-    # else
-    # {
-    #     # New record becomes the new head. Old head becomes the next
-    #     # (second) rec.
-    #     my $next_rec = $stream_head;
-    #     $stream_head = \%new_data;
-    #     set_ref_eenv($next_rec);
-    #     set_eenv("_prev_rec", $stream_head);
-    #     set_ref_eenv($stream_head);
-    #     set_eenv("_next_rec", $next_rec);
-    #     set_eenv("_last_rec", 0);
-    #     set_eenv("_prev_rec", 0);
-    # }
-    # # No need to return anything, because the $stream_head is always
-    # # the new record. 
+    my $newr = [{}];
+    push(@table, $newr);
+    set_ref_eenv(${$newr}[0]);
 }
 
 sub dup_insert
 {
     # What should happen if we are asked to dup_insert when there
-    # is no record to dup?
-
+    # is no record to dup? Well, that must never happen.
     clone();
-
-    # insert_rec();
-    # copy_eenv( $_[0], stream_head());
 }
 
 sub stream_head
 {
     return $stream_head;
+}
+
+sub get_frame
+{
+    return $frame;
 }
 
 sub curr_rec
@@ -118,7 +99,7 @@ sub curr_rec
     {
         return clone();
     }
-    return \%{$table[$#table][get_depth()]};
+    return \%{$table[$#table][get_frame()]};
 
     # Old:
     # # This might have been a debug and not real code. Zero is the
@@ -304,7 +285,7 @@ sub set_view_list
 
 sub memoz
 {
-    # this need a full rewrite.
+    # this needs a full rewrite.
     return ;
 
     my %rec_keys;
@@ -368,7 +349,7 @@ sub copy_view_list
 
 sub rewind
 {
-    
+
 }
 
 # There is a closure unwind in code_archive.txt.
@@ -385,7 +366,7 @@ sub unwind
     while ($rowc > 0)
     {
         $rowc--;
-        set_ref_eenv(($table[$rowc][get_depth()]));
+        set_ref_eenv(($table[$rowc][get_frame()]));
         if (get_eenv("_memoz"))
         {
             copy_view_list(); # sub above. Clears _memoz.
@@ -393,13 +374,42 @@ sub unwind
         }
         if ($rowc >= 0)
         {
-            # return $hr;
             return 1;
         }
         return undef;
     }
     return undef;
 }
+
+
+sub s_unwind
+{
+    # print "unwind: $rowc max: $#table\n";
+    # In try.pl we needed >=
+    # while ($rowc >= 0)
+    while ($rowc > 0)
+    {
+        $rowc--;
+        set_ref_eenv(($table[$rowc][get_frame()]));
+        if (get_eenv('_stream') != $_[0])
+        {
+            next;
+        }
+        if (get_eenv("_memoz"))
+        {
+            copy_view_list(); # sub above. Clears _memoz.
+            next;
+        }
+        if ($rowc >= 0)
+        {
+            return 1;
+        }
+        return undef;
+    }
+    return undef;
+}
+
+
 
 sub clone
 {
@@ -408,16 +418,14 @@ sub clone
     # A oneliner to try an anon list of hash
     # perl -e 'use Data::Dumper; $newr = [{}]; print Dumper($newr);'
 
-    # Probably only not defined when get_depth() returns zero. Otherwise might be trouble.
+    # Probably only not defined when get_frame() returns zero. Otherwise might be trouble.
 
-    my $newr = [{}];
-    if (defined($table[$rowc]))
-    {
-        $newr = dclone(\@{$table[$rowc]});
-    }
+    # See insert_rec() for code that inserts a new empty record.
+
+    my $newr = dclone(\@{$table[$rowc]});
     push(@table, $newr);
-    # print "cloned new table max index: $#table\n";
-    return \%{$table[$#table][get_depth()]};
+    set_ref_eenv(${$newr}[0]);
+    return \%{$table[$#table][get_frame()]};
 }
 
 # There is an existing Perl keyword reset() so we have to use another name.
@@ -425,58 +433,7 @@ sub clone
 
 sub treset
 {
-    # print "resetting\n";
     $rowc = $#table+1;
-}
-
-
-# (old) New unwind expects to have records marked for unwind. Records not
-# marked are duplicated from the memoize pass and will be updated
-# during rewind.
-
-# return from the middle of the sub. Not ideal coding style, but
-# effective.
-
-# Uses global eeref of curr record. rewind() will advance curr_rec to
-# the next record. If curr_rec() returns zero, we are done unwinding.
-
-my $uw_last = 0;
-sub xunwind
-{
-    while (1)
-    {
-	if ($uw_last)
-	{
-	    $uw_last = 0;
-	    return 0;
-	}
-	if (my $eeref = curr_rec()) 
-	{
- 	    set_ref_eenv($eeref);
-
-	    # Check to see if this is the last record we should
-	    # unwind. Clear the last rec setting.
-
-	    $uw_last = get_eenv("_last_rec");
-	    if ($uw_last)
-	    {
-		set_eenv("_last_rec", 0);
-	    }
-	    my $memoz = get_eenv("_memoz");
-	    if (! $memoz)
-	    {
-		return 1;
-	    }
-	    else
-	    {
-		print "memoizing $curr_eeref\n";
-		copy_view_list(); # See common_lib.pl. Clears _memoz.
-		rewind();
-		next;
-	    }
-	}
-	return 0;
-    }
 }
 
 
@@ -517,25 +474,5 @@ sub spawn_processes
     }
     return $in;
 }
-
-# Apr 06 2007 removed.
-sub if_col
-{
-    die "if_col deprecated. st_lib.pl\n";
-}
-
-
-# Apr 06 2007 removed.
-sub if_simple
-{
-    die "if_simple deprecated. st_lib.pl\n";
-}
-
-# Apr 06 2007 removed.
-sub agg_simple
-{
-    die "agg_simple is generated by the compiler. st_ilb.pl\n";
-}
-
 
 1;

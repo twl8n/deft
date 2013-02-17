@@ -13,137 +13,110 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 
 # Using $#table works if we loop by decrementing, even if we are adding rows with push() inside the loop.
 
+require "stll_lib.pl";
+require "common_lib.pl";
 
-my @table;
-my $rowc = 0;
-my $depth = 0;
-
-if (0)
 {
     my $in_stream = 0;
 
     foreach my $rowc (0..3)
     {
-        $table[$rowc][0] = {var1 => "v1: $rowc", var2=> "v2: $rowc", var3 => "v3: $rowc", _stream => $in_stream};
-        print "$rowc\n";
+        insert_rec();
+        set_eenv('var1', "v1: $rowc");
+        set_eenv('var2', "v2: $rowc");
+        set_eenv('var3', "v3: $rowc");
+        set_eenv('_stream', $in_stream);
+        rewind();
     }
 
-    my $rowc = 0;
     treset();
-    while (my $hr = unwind())
+    while(unwind())
     {
-        print "inside while\n";
-        my $hr = clone();
-        $hr->{var1} = "new row from var1 $rowc";
-        $rowc++;
-    }
-
-    print Dumper(\@table);
-    exit();
-}
-
-
-{
-    my $in_stream = 0;
-
-    my @table;
-    my $depth = 0;
-
-    foreach my $rowc (0..3)
-    {
-        $table[$rowc][$depth] = {var1 => "v1: $rowc", var2=> "v2: $rowc", var3 => "v3: $rowc", _stream => $in_stream};
-    }
-
-    # split, ala if-stmt
-
-    for(my $row=$#table; $row >= 0; $row--)
-    {
-        my $hr = $table[$row][$depth];
-        if ($hr->{var1} eq "v1: 1" || $hr->{var1} eq "v1: 2" )
+        # print Dumper(get_ref_eenv());
+        if (get_eenv('var1') eq "v1: 1" || get_eenv('var1') eq "v1: 2" )
         {
-            $hr->{_stream} = 'outer_if';
+            set_eenv('_stream', 1)
         }
-    }
-
-    # The still rows in stream zero are the remainder ala else-stmt.
-
-    for(my $row=$#table; $row >= 0; $row--)
-    {
-        my $hr = $table[$row][$depth];
-        if ($hr->{_stream} eq "0")
+        else
         {
-            $hr->{_stream} = 'else';
+            set_eenv('_stream', 2);
         }
+        rewind();
     }
 
     # start running code on the streams
-    # inner oute if-stmt must run first.
+    # inner outer if-stmt must run first.
 
-    for(my $row=$#table; $row >= 0; $row--)
+    treset();
+    while(s_unwind(1))
     {
-        my $hr = $table[$row][$depth];
-        if ($hr->{_stream} eq 'outer_if')
-        {
-            $hr->{var1} .= "pie";
-            my $newr = dclone(\@{$table[$row]});
-            $newr->[$depth]->{var1} = "new row from var1";
-            push(@table, $newr);
-        }
+        print "in loop\n";
+        set_eenv('var1', "pie");
+        set_eenv('_stream', 3);
+        # Changed eenv to the new row!
+        clone();
+        set_eenv('var1', get_eenv('var1') . " new row from var1");
     }
 
     # inner if-stmt must run second
+    # Important: since this is the inner-if it *must* only operate on stream 3!!!
 
-    for(my $row=$#table; $row >= 0; $row--)
+    treset();
+    while(s_unwind(3))
     {
-        my $hr = $table[$row][$depth];
-        if ($hr->{_stream} eq 'outer_if' && $hr->{var2} eq "v2: 2")
+        print "loopx\n";
+        if (get_eenv('var2') eq "v2: 2")
         {
-            $hr->{var2} .= " cheesecake";
-            my $newr = dclone(\@{$table[$row]});
-            $newr->[$depth]->{var1} = "new row from var2";
-            push(@table, $newr);
+            set_eenv('_stream', 4);
+        }
+        else
+        {
+            set_eenv('_stream', 5);
         }
     }
 
-    # We can run the else now or later, it doesn't matter.
-
-    for(my $row=$#table; $row >= 0; $row--)
+    treset();
+    while(s_unwind(4))
     {
-        my $hr = $table[$row][$depth];
-        if ($hr->{_stream} eq 'else')
-        {
-            $hr->{var1} .= "cake";
-            $hr->{_stream} = $in_stream+2;
-        }
+        my $var2 = get_eenv('var2');
+        $var2 .= " cheesecake";
+        set_eenv('var2', $var2);
+        set_eenv('_stream', 5);
+        clone();
+        set_eenv('var1', "new row from var2");
     }
 
 
-    # delete all the keys from stname
-    foreach my $key (keys(%stname))
+    # In theory, we could have run this earlier.
+
+    treset();
+    while(s_unwind(2))
     {
-        delete($stname{$key});
+        my $var1 = get_eenv('var1');
+        $var1 .= " cake";
+        set_eenv('var1', $var1);
+        set_eenv('varx', "new column");
+        set_eenv('_stream', 5);
     }
 
-    # Merge all the streams.
+    print dumpt();
+    exit();
 
-    for(my $row=$#table; $row >= 0; $row--)
-    {
-        my $hr = $table[$row][$depth];
-        $hr->{_stream} = 0;
-    }
+    # # A new line of deft code.
+    # # Add a new column. No nesting, no cloning rows.
 
-    # A new line of deft code.
-    # Add a new column. No nesting, no cloning rows.
-
-    for(my $row=$#table; $row >= 0; $row--)
-    {
-        my $hr = $table[$row][$depth];
-        $hr->{var4} = "new col $row";
-        
-        # No nesting or subs so no need to inc the stream.
-    }
+    # for(my $row=$#table; $row >= 0; $row--)
+    # {
+    #     my $hr = $table[$row][$depth];
+    #     if ($hr->{_stream} == 5)
+    #     {
+    #         $hr->{var4} = "new col $row";
+    #         $hr->{_stream} = 6;
+    #     }
+    #     # No nesting or subs so no need to inc the stream.
+    # }
     
-    printf ("ff: %s\n", Dumper(\@table));
+    # printf ("ff: %s\n", Dumper(\@table));
 
 
     exit();
@@ -383,41 +356,27 @@ sub  main1
     print "ok\n";
 }
 
-sub unwind
+
+if (0)
 {
-    print "unwind: $rowc\n";
-    while ($rowc >= 0)
+    my $in_stream = 0;
+
+    foreach my $rowc (0..3)
     {
-        $rowc--;
-        my $hr = ($table[$rowc][$depth]);
-        # if (get_eenv("_memoz"))
-        # {
-        #     copy_view_list(); # sub above. Clears _memoz.
-        #     next;
-        # }
-        if ($rowc >= 0)
-        {
-            return $hr;
-        }
-        return undef;
+        #$table[$rowc][0] = {var1 => "v1: $rowc", var2=> "v2: $rowc", var3 => "v3: $rowc", _stream => $in_stream};
+        print "$rowc\n";
     }
-    return undef;
+
+    my $rowc = 0;
+    treset();
+    while (my $hr = unwind())
+    {
+        print "inside while\n";
+        my $hr = clone();
+        $hr->{var1} = "new row from var1 $rowc";
+        $rowc++;
+    }
+
+    # print Dumper(\@table);
+    exit();
 }
-
-sub clone
-{
-    my $newr = dclone(\@{$table[$rowc]});
-    push(@table, $newr);
-    return \%{$table[$#table][$depth]};
-}
-
-# There is an existing function reset() so we have to use another name.
-# Conflicting functions silently fail.
-sub treset
-{
-    print "resetting\n";
-    $rowc = $#table+1;
-    $depth = 0;
-}
-
-

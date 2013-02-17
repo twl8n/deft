@@ -35,7 +35,7 @@ my @sub_stack;
 
 my $main_str = "main:"; # this changes way too often.
 my @table;       # the table $table[row][depth]
-my $depth = 0;   # unused, see $#tablecurrent depth
+my $depth = 0;   # unused?
 my %deft_func;   # See sub initdeft
 
 my $eenv;        # Hash ref of the current row
@@ -77,6 +77,7 @@ my $wrap_else_stop = $tc++;
 my $wrap_union = $tc++;
 my $wrap_union_start = $tc++;
 my $wrap_union_stop = $tc++;
+my $wrap_comment = $tc++;
 
 # List of start types for various block statements.
 # ALL block types need to be here (and almost certainly in @end_type).
@@ -139,6 +140,8 @@ $w2t[$wrap_else_stop] = "else_stop";
 $w2t[$wrap_union] = "union";
 $w2t[$wrap_union_start] = "union_start";
 $w2t[$wrap_union_stop] = "union_stop";
+$w2t[$wrap_comment] = "comment";
+
 
 # This is a simple and crude method to make variable argument lists
 # for Deft TOP calls. This will almost certainly have to be fixed some
@@ -1466,6 +1469,24 @@ sub mark_sub_calls
     }
 }
 
+sub mark_stream
+{
+    my $code_ref = $_[0];
+    my @out;
+    my $stream_counter = 0;
+    foreach my $element (@{$code_ref})
+    {
+        push(@out, $element);
+        if ($element->[1] == $wrap_scalar)
+        {
+            $stream_counter++;
+            my @list = ("# stream_counter: $stream_counter", $wrap_comment, $element->[2]);
+            push(@out, \@list);
+        }
+    }
+    @{$code_ref} = @out;
+}
+
 
 # After calling mark_if() these things will be true:
 # - The start of an if w/o an else is "if".
@@ -1809,6 +1830,11 @@ sub gen_scalar
 	my $type = $code_ref->[$xx][1];
 	my $curr_sub = $code_ref->[$xx][2];
 	
+        if ($type == $wrap_comment)
+        {
+            $code_str .= "$code\n";
+        }
+
 	if ($type == $wrap_none ||
 	    $type == $wrap_delete)
 	{
@@ -2227,7 +2253,7 @@ sub compile_deft
     #dump_code(\@code, 1);
 
     mark_if(\@code);
-    #dump_code(\@code, 1);
+    # dump_code(\@code, 1);
     
     mark_starts(\@code);
     #dump_code(\@code, 1);
@@ -2235,8 +2261,12 @@ sub compile_deft
     add_unions(\@code);
     #dump_code(\@code, 1);
 
+    # Used to add comments, or at least to demonstrate the idiom of adding comments.
+    mark_stream(\@code);
+    # dump_code(\@code, 1);
+
     gen_if(\@code);
-    #dump_code(\@code, 1);
+    # dump_code(\@code, 1);
 
     gen_agg(\@code);
     #dump_code(\@code, 1);
