@@ -3,6 +3,16 @@
 use strict;
 use Data::Dumper;
 
+# Usage: ./try.pl
+
+# Dec 19 2014 This demonstrates how rows and streams might work. Depth appears to be carried along, but is unused
+# since the code currently only demos if-if-else.
+
+# - add if-else stream management (stack?). Consider if streams are global, or are compiled into args sent to
+# unwind() and rewind().
+
+# - add demo sub that deals with $depth
+
 # http://search.cpan.org/~lembark/LinkedList-Single-v0.99.21/lib/LinkedList/Single.pm
 
 # This works with our list of lists. Note the function is call dclone().
@@ -13,48 +23,34 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 
 # Using $#table works if we loop by decrementing, even if we are adding rows with push() inside the loop.
 
+# We're decrementing so that dclone() can add new rows at the end of the list and won't effect rows which
+# haven't been unwound. It's clever.
 
 my @table;
 my $rowc = 0;
 my $depth = 0;
 
-if (0)
+main();
+
+sub main
 {
     my $in_stream = 0;
 
-    foreach my $rowc (0..3)
-    {
-        $table[$rowc][0] = {var1 => "v1: $rowc", var2=> "v2: $rowc", var3 => "v3: $rowc", _stream => $in_stream};
-        print "$rowc\n";
-    }
-
-    my $rowc = 0;
-    treset();
-    while (my $hr = unwind())
-    {
-        print "inside while\n";
-        my $hr = clone();
-        $hr->{var1} = "new row from var1 $rowc";
-        $rowc++;
-    }
-
-    print Dumper(\@table);
-    exit();
-}
-
-
-{
-    my $in_stream = 0;
+    # What is depth? Only for subroutines?
 
     my @table;
     my $depth = 0;
 
+    # Initialize the depth zero table with 3 rows.
     foreach my $rowc (0..3)
     {
-        $table[$rowc][$depth] = {var1 => "v1: $rowc", var2=> "v2: $rowc", var3 => "v3: $rowc", _stream => $in_stream};
+        $table[$rowc][$depth] = {var1 => "v1: $rowc",
+                                 var2 => "v2: $rowc",
+                                 var3 => "v3: $rowc",
+                                 _stream => $in_stream};
     }
 
-    # split, ala if-stmt
+    # Split the table, ala if-stmt. I guess it is "outer" because we have a nested "inner" if statement below.
 
     for(my $row=$#table; $row >= 0; $row--)
     {
@@ -65,7 +61,9 @@ if (0)
         }
     }
 
-    # The still rows in stream zero are the remainder ala else-stmt.
+    # printf ("after if stream split:\n%s\n", Dumper(\@table));
+
+    # Rows remaining in stream zero are the else-stmt.
 
     for(my $row=$#table; $row >= 0; $row--)
     {
@@ -76,36 +74,44 @@ if (0)
         }
     }
 
-    # start running code on the streams
-    # inner oute if-stmt must run first.
+    # Start running code on the streams
+    # Outer if-stmt must run first.
 
     for(my $row=$#table; $row >= 0; $row--)
     {
         my $hr = $table[$row][$depth];
         if ($hr->{_stream} eq 'outer_if')
         {
-            $hr->{var1} .= "pie";
+            $hr->{var1} .= "pie (outer)";
             my $newr = dclone(\@{$table[$row]});
-            $newr->[$depth]->{var1} = "new row from var1";
+            $newr->[$depth]->{var1} = "new row from var1 (outer)";
             push(@table, $newr);
         }
     }
 
-    # inner if-stmt must run second
+    # Split the outer to create an inner if-stmt that must run second (next, now).
 
     for(my $row=$#table; $row >= 0; $row--)
     {
         my $hr = $table[$row][$depth];
         if ($hr->{_stream} eq 'outer_if' && $hr->{var2} eq "v2: 2")
         {
-            $hr->{var2} .= " cheesecake";
+            $hr->{var2} .= " cheesecake (outer, pre-inner split)";
             my $newr = dclone(\@{$table[$row]});
-            $newr->[$depth]->{var1} = "new row from var2";
+            $newr->[$depth]->{var1} = "modified, cloned row (inner), originally var2. r:$row";
             push(@table, $newr);
         }
     }
 
+    # printf ("post inner:\n%s\n", Dumper(\@table));
+
     # We can run the else now or later, it doesn't matter.
+
+    # Seeing as _stream has text in it, I can't help but wonder if $in_stream+2 will work, or if it will even
+    # do something rational.
+
+    # It appears we don't really use streams, except that while there are active if-else statements, the two
+    # (or how many ever) streams need unique values.
 
     for(my $row=$#table; $row >= 0; $row--)
     {
@@ -117,12 +123,14 @@ if (0)
         }
     }
 
+    printf ("post-else:\n%s\n", Dumper(\@table));
 
+    # WTF was stname? Pretty clearly no longer used.
     # delete all the keys from stname
-    foreach my $key (keys(%stname))
-    {
-        delete($stname{$key});
-    }
+    # foreach my $key (keys(%stname))
+    # {
+    #     delete($stname{$key});
+    # }
 
     # Merge all the streams.
 
@@ -143,7 +151,7 @@ if (0)
         # No nesting or subs so no need to inc the stream.
     }
     
-    printf ("ff: %s\n", Dumper(\@table));
+    printf ("final:\n%s\n", Dumper(\@table));
 
 
     exit();
@@ -257,40 +265,42 @@ if (0)
         printf "post-rewind: %s\n", Dumper(\@table);
 
     }
-}
-exit();
+    exit();
+} # end main
 
-my @list = (0..3);
-
-# foreach my $index (0..$#list)
-my $max = $#list;
-for(my $index = 0; $index <= $max; $index++)
+sub old_stuff
 {
-    if ($index == 0)
+    my @list = (0..3);
+
+    # foreach my $index (0..$#list)
+    my $max = $#list;
+    for (my $index = 0; $index <= $max; $index++)
     {
-        push(@list, "stuff");
-        print "pushed, last: $#list\n";
+        if ($index == 0)
+        {
+            push(@list, "stuff");
+            print "pushed, last: $#list\n";
+        }
+        print "list: $list[$index]\n";
     }
-    print "list: $list[$index]\n";
-}
 
-print Dumper(\@list);
+    print Dumper(\@list);
 
-exit();
+    exit();
 
-exit;
-{
-    my $var = "i,like,pie";
-    my %vh;
-    foreach my $item (split(',', $var))
+    exit;
     {
-	$vh{$item} = 1;
-    }
+        my $var = "i,like,pie";
+        my %vh;
+        foreach my $item (split(',', $var))
+        {
+            $vh{$item} = 1;
+        }
     
-    print Dumper(\%vh);
+        print Dumper(\%vh);
 
+    }
 }
-
 
 sub mainx
 {
@@ -421,3 +431,26 @@ sub treset
 }
 
 
+if (0)
+{
+    my $in_stream = 0;
+
+    foreach my $rowc (0..3)
+    {
+        $table[$rowc][0] = {var1 => "v1: $rowc", var2=> "v2: $rowc", var3 => "v3: $rowc", _stream => $in_stream};
+        print "$rowc\n";
+    }
+
+    my $rowc = 0;
+    treset();
+    while (my $hr = unwind())
+    {
+        print "inside while\n";
+        my $hr = clone();
+        $hr->{var1} = "new row from var1 $rowc";
+        $rowc++;
+    }
+
+    print Dumper(\@table);
+    exit();
+}

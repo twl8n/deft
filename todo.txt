@@ -16,6 +16,10 @@ and the answer in order to keep track of the context of the comments.
 - discuss: maybe unwind() should alway take a stream number. Always. When you want to operate on all streams,
   you must explicitly merge. This would certainly be much safe for human-crafted code.
 
+- How is try_rewind.pl run and what is the output? Need docs and usage comments.
+
+- + See try.pl which executes and appears to be a prototype for how streams, and unwind/rewind should work.
+
 - + change try_rewind.pl to a table demo that requires stll_lib.pl and common_lib.pl
 
 # _stream and _old are lists whose lengths will be compared
