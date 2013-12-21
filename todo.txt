@@ -13,12 +13,24 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
+- x implement unwind() in try.pl
+
+- add if-else algo to try.pl
+
+- add subs using $depth to try.pl
+
+- Is $#table correct for $table[$row][$depth] when there are multiple depths? Or would we have to swap list
+  dimensions and use $#table[$depth] to get the number of rows in the "table" for the current depth? Are there
+  any notes about why we chose row/depth instead of depth/row?
+
+- x See try.pl which executes and appears to be a prototype for how streams, and unwind/rewind should work.
+
 - discuss: maybe unwind() should alway take a stream number. Always. When you want to operate on all streams,
   you must explicitly merge. This would certainly be much safe for human-crafted code.
 
 - How is try_rewind.pl run and what is the output? Need docs and usage comments.
 
-- + See try.pl which executes and appears to be a prototype for how streams, and unwind/rewind should work.
+- convert for loops in try.pl to unwind
 
 - + change try_rewind.pl to a table demo that requires stll_lib.pl and common_lib.pl
 
