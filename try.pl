@@ -2,6 +2,7 @@
 
 use strict;
 use Data::Dumper;
+$Data::Dumper::Sortkeys = 1;
 
 # Usage: ./try.pl
 
@@ -28,6 +29,7 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 
 my @table;
 my $rowc = 0;
+# What is depth? Only for subroutines?
 my $depth = 0;
 
 main();
@@ -35,11 +37,6 @@ main();
 sub main
 {
     my $in_stream = 0;
-
-    # What is depth? Only for subroutines?
-
-    my @table;
-    my $depth = 0;
 
     # Initialize the depth zero table with 3 rows.
     foreach my $rowc (0..3)
@@ -143,130 +140,28 @@ sub main
     # A new line of deft code.
     # Add a new column. No nesting, no cloning rows.
 
-    for(my $row=$#table; $row >= 0; $row--)
-    {
-        my $hr = $table[$row][$depth];
-        $hr->{var4} = "new col $row";
-        
-        # No nesting or subs so no need to inc the stream.
-    }
+    # for(my $row=$#table; $row >= 0; $row--)
+    # {
+    #     my $hr = $table[$row][$depth];
+    #     $hr->{var4} = "new col $row";
+    #     # No nesting or subs so no need to inc the stream.
+    # }
     
+    rewind();
+    my $row  = $#table;
+    while(my $hr = unwind())
+    {
+        $hr->{var4} = "new col $row";
+        $row--;
+    }
+
     printf ("final:\n%s\n", Dumper(\@table));
 
-
-    exit();
-    
-    if (0)
-    {
-        my @list = (0..3);
-        my $xx = 0;
-        my $max = $#list;
-        foreach my $val (0..$max)
-        {
-            print "val: $list[$val]\n";
-            push(@list, "new $val");
-            $xx++;
-            if ($xx > 20)
-            {
-                exit();
-            }
-        }
-    
-        $xx = 0;
-        $max = $#list/2;
-        foreach my $val (0..$max)
-        {
-        
-        }
-
-        print Dumper(\@list);
-        exit();
-    }
-
     exit();
 
 
-    if (0)
-    {
-        my $in_stream = 0;
-        my $out_stream = $in_stream+1;
-        
-        my @table;
-        $table[$in_stream] = undef;
-        foreach my $rowc (0..3)
-        {
-            # $table[$rowc][0] = {var1 => "v1: $rowc", var2=> "v2: $rowc", var3 => "v3: $rowc"};
-
-            my $prev = undef;
-            my $next = undef;
-            my %hrow = (var1 => "v1: $rowc", var2=> "v2: $rowc", var3 => "v3: $rowc", _prev => '', _next => '');
-
-            if ($table[$in_stream])
-            {
-                $prev = \%{$table[$in_stream]};
-                printf "Have a prev: %s\n", $prev ;
-                $hrow{_next} = $prev;
-                $prev->{_prev} = \%hrow;
-            }
-
-            $table[$in_stream] = \%hrow;
-        }
-
-        printf "first: %s\n", Dumper(\@table);
-
-        $Data::Dumper::Maxdepth = 1;
-        my $hr = $table[$in_stream];
-        printf "ll: %s\n", Dumper($hr);
-        while ( $hr->{_next})
-        {
-            $hr = $hr->{_next};
-            printf "ll: %s\n", Dumper($hr);
-        }
-
-        $hr = $table[$in_stream];
-
-        while ( $hr->{_next})
-        {
-            my $row = 0;
-            # Use hash slice as both lvalue and value.
-            @{$table[$row][1]}{qw/xxx1 xxx2/} = @{$table[$row][0]}{qw/var1 var2/};
-        }
-
-        foreach my $row (0.. $#table)
-        {
-            printf "second $row: %s\n", Dumper(\%{$table[$row][1]});
-        }
-
-        my $row_max = $#table;
-        foreach my $row (0..$row_max)
-        {
-            $table[$row][1]{xxx2} = "modified $row";
-            my $new = dclone(\@{$table[$row]});
-            print "new: $new \@{$table[$row]}\n";
-            $new->[1]{xxx2} = "really new $row";
-            push(@table, $new);
-        }
-    
-        foreach my $row (0.. $#table)
-        {
-            printf "third $row: %s\n", Dumper(\%{$table[$row][1]});
-        }
-
-        printf "third-dumper: %s\n", Dumper(\@table);
-
-        #unwind/rewind
-
-        foreach my $row (0..$#table)
-        {
-            # Use hash slice as both lvalue and value.
-            @{$table[$row][0]}{qw/var1 var2/} = @{$table[$row][1]}{qw/xxx1 xxx2/};
-            pop(@{$table[$row]});
-        }
-        printf "post-rewind: %s\n", Dumper(\@table);
-
-    }
-    exit();
 } # end main
+
 
 sub old_stuff
 {
@@ -393,23 +288,32 @@ sub  main1
     print "ok\n";
 }
 
+sub rewind
+{
+    $rowc = $#table;
+}
+
 sub unwind
 {
-    print "unwind: $rowc\n";
-    while ($rowc >= 0)
+    # printf ("uw:\n%s\n", Dumper($hr));
+        
+    # print "unwind: $rowc\n";
+
+    # In this (simplified?) universe, the body of unwind() is an if() statement, not while(). Why would it be
+    # a while()? I think it was a while() at some historical time. Maybe we'd switch to using while() if there
+    # were memoized rows of data that we had to skip in order to get to a "real" row of data.
+
+    if ($rowc >= 0)
     {
+        my $hr = $table[$rowc][$depth];
         $rowc--;
-        my $hr = ($table[$rowc][$depth]);
+        # printf("hr: %s %s\n",  ref(\\%{$hr}));
         # if (get_eenv("_memoz"))
         # {
         #     copy_view_list(); # sub above. Clears _memoz.
         #     next;
         # }
-        if ($rowc >= 0)
-        {
-            return $hr;
-        }
-        return undef;
+        return $hr;
     }
     return undef;
 }
@@ -453,4 +357,118 @@ if (0)
 
     print Dumper(\@table);
     exit();
+}
+
+
+sub more_old_stuff
+{
+    exit();
+    
+    if (0)
+    {
+        my @list = (0..3);
+        my $xx = 0;
+        my $max = $#list;
+        foreach my $val (0..$max)
+        {
+            print "val: $list[$val]\n";
+            push(@list, "new $val");
+            $xx++;
+            if ($xx > 20)
+            {
+                exit();
+            }
+        }
+    
+        $xx = 0;
+        $max = $#list/2;
+        foreach my $val (0..$max)
+        {
+        
+        }
+
+        print Dumper(\@list);
+        exit();
+    }
+
+
+    if (0)
+    {
+        my $in_stream = 0;
+        my $out_stream = $in_stream+1;
+        
+        my @table;
+        $table[$in_stream] = undef;
+        foreach my $rowc (0..3)
+        {
+            # $table[$rowc][0] = {var1 => "v1: $rowc", var2=> "v2: $rowc", var3 => "v3: $rowc"};
+
+            my $prev = undef;
+            my $next = undef;
+            my %hrow = (var1 => "v1: $rowc", var2=> "v2: $rowc", var3 => "v3: $rowc", _prev => '', _next => '');
+
+            if ($table[$in_stream])
+            {
+                $prev = \%{$table[$in_stream]};
+                printf "Have a prev: %s\n", $prev ;
+                $hrow{_next} = $prev;
+                $prev->{_prev} = \%hrow;
+            }
+
+            $table[$in_stream] = \%hrow;
+        }
+
+        printf "first: %s\n", Dumper(\@table);
+
+        $Data::Dumper::Maxdepth = 1;
+        my $hr = $table[$in_stream];
+        printf "ll: %s\n", Dumper($hr);
+        while ( $hr->{_next})
+        {
+            $hr = $hr->{_next};
+            printf "ll: %s\n", Dumper($hr);
+        }
+
+        $hr = $table[$in_stream];
+
+        while ( $hr->{_next})
+        {
+            my $row = 0;
+            # Use hash slice as both lvalue and value.
+            @{$table[$row][1]}{qw/xxx1 xxx2/} = @{$table[$row][0]}{qw/var1 var2/};
+        }
+
+        foreach my $row (0.. $#table)
+        {
+            printf "second $row: %s\n", Dumper(\%{$table[$row][1]});
+        }
+
+        my $row_max = $#table;
+        foreach my $row (0..$row_max)
+        {
+            $table[$row][1]{xxx2} = "modified $row";
+            my $new = dclone(\@{$table[$row]});
+            print "new: $new \@{$table[$row]}\n";
+            $new->[1]{xxx2} = "really new $row";
+            push(@table, $new);
+        }
+    
+        foreach my $row (0.. $#table)
+        {
+            printf "third $row: %s\n", Dumper(\%{$table[$row][1]});
+        }
+
+        printf "third-dumper: %s\n", Dumper(\@table);
+
+        #unwind/rewind
+
+        foreach my $row (0..$#table)
+        {
+            # Use hash slice as both lvalue and value.
+            @{$table[$row][0]}{qw/var1 var2/} = @{$table[$row][1]}{qw/xxx1 xxx2/};
+            pop(@{$table[$row]});
+        }
+        printf "post-rewind: %s\n", Dumper(\@table);
+
+    }
 }
