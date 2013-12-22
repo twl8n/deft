@@ -44,13 +44,15 @@ main();
 
 sub inc_scope 
 {
-    my @proto;
-    my @arg;
-    while(@_)
-    {
-       push(@proto, shift(@_));
-       push(@arg, shift(@_));
-    }
+    my @proto = @{$_[0]};
+    my @arg = @{$_[1]};
+
+
+    # while(@_)
+    # {
+    #    # push(@proto, shift(@_));
+    #    # push(@arg, shift(@_));
+    # }
     foreach my $row (@table) # (0..$#{$table[0]})
     {
         # Use hash slice as both lvalue and value.
@@ -70,7 +72,7 @@ sub inc_scope
 
         # my @list = @{$row->[0]}{@arg};
 
-        @{$new_scope}{qw(dog cat)} = @{[@{$row->[0]}{qw(var1 var2)}]};
+        @{$new_scope}{@proto} = @{[@{$row->[0]}{@arg}]};
 
         printf ("new scope:\n%s\n", Dumper($new_scope));
         
