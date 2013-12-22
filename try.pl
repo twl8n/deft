@@ -6,13 +6,13 @@ $Data::Dumper::Sortkeys = 1;
 
 # Usage: ./try.pl
 
-# Dec 19 2014 This demonstrates how rows and streams might work. Depth appears to be carried along, but is unused
+# Dec 19 2014 This demonstrates how rows and streams might work. Scope appears to be carried along, but is unused
 # since the code currently only demos if-if-else.
 
 # - add if-else stream management (stack?). Consider if streams are global, or are compiled into args sent to
 # unwind() and rewind().
 
-# - add demo sub that deals with $depth
+# - add demo sub that deals with $scope
 
 # http://search.cpan.org/~lembark/LinkedList-Single-v0.99.21/lib/LinkedList/Single.pm
 
@@ -29,29 +29,81 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 
 my @table;
 my $rowc = 0;
-# What is depth? Only for subroutines?
-my $depth = 0;
+# What is scope? Only for subroutines?
+my $scope = 0;
 
 main();
+
+# aka create_scope, push_scope and so on
+
+# $table[row=0][scope=0]->{food} = "cake";
+
+# $table[row=0][scope=0]->{stuff} = "cake"; # new unshifted zero
+# $table[row=0][scope=1]->{food} = "cake"; # zero becomes 1
+
+
+sub inc_scope 
+{
+    my @proto;
+    my @arg;
+    while(@_)
+    {
+       push(@proto, shift(@_));
+       push(@arg, shift(@_));
+    }
+    foreach my $row (@table) # (0..$#{$table[0]})
+    {
+        # Use hash slice as both lvalue and value.
+        my $new_scope;
+        # print "rr:" . @{$row->[0]}{@arg} . "\n";
+        printf ("row:\n%s\n", Dumper($row->[0]));
+
+        printf ("arg:\n%s\n", Dumper(\@arg));
+
+        my %hash = (
+                    First => 4,
+                    Second => 2,
+                    Third => 5 );
+        printf ("test slice\n%s\n", @hash{qw(First Third)});
+
+        printf ("mh:\n%s\n", Dumper(\@{[@{$row->[0]}{@arg}]}));
+
+        # my @list = @{$row->[0]}{@arg};
+
+        @{$new_scope}{qw(dog cat)} = @{[@{$row->[0]}{qw(var1 var2)}]};
+
+        printf ("new scope:\n%s\n", Dumper($new_scope));
+        
+        unshift @{$row}, $new_scope;
+        # @{$table[$#table+1][$row]}{@proto} = @{$table[$#table][$row]}{@arg};
+        printf ("new table row:\n%s\n", Dumper(\@table));
+    }
+}
+
 
 sub main
 {
     my $in_stream = 0;
 
-    # Initialize the depth zero table with 3 rows.
+    # Initialize the scope zero table with 3 rows.
     foreach my $rowc (0..3)
     {
-        $table[$rowc][$depth] = {var1 => "v1: $rowc",
+        $table[$rowc][0] = {var1 => "v1: $rowc",
                                  var2 => "v2: $rowc",
                                  var3 => "v3: $rowc",
                                  _stream => $in_stream};
     }
 
+    my @proto = ("dog", "cat");
+    my @arg = ("var1", "var2");
+    inc_scope(\@proto, \@arg);
+    
+    exit();
     # Split the table, ala if-stmt. I guess it is "outer" because we have a nested "inner" if statement below.
 
     for(my $row=$#table; $row >= 0; $row--)
     {
-        my $hr = $table[$row][$depth];
+        my $hr = $table[$row][$scope];
         if ($hr->{var1} eq "v1: 1" || $hr->{var1} eq "v1: 2" )
         {
             $hr->{_stream} = 'outer_if';
@@ -64,7 +116,7 @@ sub main
 
     for(my $row=$#table; $row >= 0; $row--)
     {
-        my $hr = $table[$row][$depth];
+        my $hr = $table[$row][$scope];
         if ($hr->{_stream} eq "0")
         {
             $hr->{_stream} = 'else';
@@ -76,12 +128,12 @@ sub main
 
     for(my $row=$#table; $row >= 0; $row--)
     {
-        my $hr = $table[$row][$depth];
+        my $hr = $table[$row][$scope];
         if ($hr->{_stream} eq 'outer_if')
         {
             $hr->{var1} .= "pie (outer)";
             my $newr = dclone(\@{$table[$row]});
-            $newr->[$depth]->{var1} = "new row from var1 (outer)";
+            $newr->[$scope]->{var1} = "new row from var1 (outer)";
             push(@table, $newr);
         }
     }
@@ -90,12 +142,12 @@ sub main
 
     for(my $row=$#table; $row >= 0; $row--)
     {
-        my $hr = $table[$row][$depth];
+        my $hr = $table[$row][$scope];
         if ($hr->{_stream} eq 'outer_if' && $hr->{var2} eq "v2: 2")
         {
             $hr->{var2} .= " cheesecake (outer, pre-inner split)";
             my $newr = dclone(\@{$table[$row]});
-            $newr->[$depth]->{var1} = "modified, cloned row (inner), originally var2. r:$row";
+            $newr->[$scope]->{var1} = "modified, cloned row (inner), originally var2. r:$row";
             push(@table, $newr);
         }
     }
@@ -112,7 +164,7 @@ sub main
 
     for(my $row=$#table; $row >= 0; $row--)
     {
-        my $hr = $table[$row][$depth];
+        my $hr = $table[$row][$scope];
         if ($hr->{_stream} eq 'else')
         {
             $hr->{var1} .= "cake";
@@ -133,7 +185,7 @@ sub main
 
     for(my $row=$#table; $row >= 0; $row--)
     {
-        my $hr = $table[$row][$depth];
+        my $hr = $table[$row][$scope];
         $hr->{_stream} = 0;
     }
 
@@ -142,7 +194,7 @@ sub main
 
     # for(my $row=$#table; $row >= 0; $row--)
     # {
-    #     my $hr = $table[$row][$depth];
+    #     my $hr = $table[$row][$scope];
     #     $hr->{var4} = "new col $row";
     #     # No nesting or subs so no need to inc the stream.
     # }
@@ -197,15 +249,15 @@ sub old_stuff
     }
 }
 
-sub mainx
-{
-    my $unwind = init_unwind();
+# sub mainx
+# {
+#     my $unwind = init_unwind();
 
-    &$unwind("one");
-    &$unwind("two");
-    &$unwind("three");
+#     &$unwind("one");
+#     &$unwind("two");
+#     &$unwind("three");
 
-}
+# }
 
 sub xinit_unwind
 {
@@ -305,7 +357,7 @@ sub unwind
 
     if ($rowc >= 0)
     {
-        my $hr = $table[$rowc][$depth];
+        my $hr = $table[$rowc][$scope];
         $rowc--;
         # printf("hr: %s %s\n",  ref(\\%{$hr}));
         # if (get_eenv("_memoz"))
@@ -322,7 +374,7 @@ sub clone
 {
     my $newr = dclone(\@{$table[$rowc]});
     push(@table, $newr);
-    return \%{$table[$#table][$depth]};
+    return \%{$table[$#table][$scope]};
 }
 
 # There is an existing function reset() so we have to use another name.
@@ -331,7 +383,7 @@ sub treset
 {
     print "resetting\n";
     $rowc = $#table+1;
-    $depth = 0;
+    $scope = 0;
 }
 
 
