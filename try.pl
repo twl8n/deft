@@ -72,7 +72,6 @@ sub dec_scope
 }
 
 
-
 sub main
 {
     my $in_stream = 0;
@@ -102,7 +101,6 @@ sub main
 
     dec_scope(\@proto, \@arg);
     printf ("post dec_scope:\n%s\n", Dumper(\@table));
-
 
     # Split the table, ala if-stmt. I guess it is "outer" because we have a nested "inner" if statement below.
 
