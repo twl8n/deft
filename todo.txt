@@ -13,6 +13,18 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
+- x The depth first option is bad. Do not use. Mapping the new rows in new scopes back the original rows would
+  require extra bookkeeping. As opposed to a stack-history (aka stack frame) of all rows which is trivial and
+  robust.
+
+- inc_depth (perhaps better called "create_scope", the inverse called "return_from_scope") pushes a new stack
+  frame onto each row stack. The whole ancestor stack is copied so that when it is time to rewind the row has
+  all the previous stack frames necessary to resolve the current row against the row in the previous stack
+  frame.
+
+- x The no depth option where vars refs are used is very difficult to implement recursion. Each depth of
+  calling has a mapping of columns. Don't go there.
+
 - x implement unwind() in try.pl
 
 - add if-else algo to try.pl
@@ -74,10 +86,6 @@ and the answer in order to keep track of the context of the comments.
 - x Deft is pass-by-reference and there are no return values. If you want a new column it must be created when
   being passed into a subroutine. The sub can change the new/existing column, but any columns created inside
   the sub are strictly local to that sub.
-
-- inc_depth pushes a new stack frame onto each row stack. The whole ancestor stack is copied so that when it
-  is time to rewind the row has all the previous stack frames necessary to resolve the current row against the
-  row in the previous stack frame.
 
 - unwind, then rewind percolates up through all ancestors. Unwind always
   continues with the deepest child until no records are left. Unwind translates
