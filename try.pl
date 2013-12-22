@@ -47,40 +47,30 @@ sub inc_scope
     my @proto = @{$_[0]};
     my @arg = @{$_[1]};
 
-
-    # while(@_)
-    # {
-    #    # push(@proto, shift(@_));
-    #    # push(@arg, shift(@_));
-    # }
     foreach my $row (@table) # (0..$#{$table[0]})
     {
         # Use hash slice as both lvalue and value.
         my $new_scope;
-        # print "rr:" . @{$row->[0]}{@arg} . "\n";
-        printf ("row:\n%s\n", Dumper($row->[0]));
-
-        printf ("arg:\n%s\n", Dumper(\@arg));
-
-        my %hash = (
-                    First => 4,
-                    Second => 2,
-                    Third => 5 );
-        printf ("test slice\n%s\n", @hash{qw(First Third)});
-
-        printf ("mh:\n%s\n", Dumper(\@{[@{$row->[0]}{@arg}]}));
-
-        # my @list = @{$row->[0]}{@arg};
-
         @{$new_scope}{@proto} = @{[@{$row->[0]}{@arg}]};
-
-        printf ("new scope:\n%s\n", Dumper($new_scope));
-        
+        # printf ("new scope:\n%s\n", Dumper($new_scope));
         unshift @{$row}, $new_scope;
-        # @{$table[$#table+1][$row]}{@proto} = @{$table[$#table][$row]}{@arg};
-        printf ("new table row:\n%s\n", Dumper(\@table));
+        # printf ("new table row:\n%s\n", Dumper(\@table));
     }
 }
+
+sub dec_scope
+{
+    my @proto = @{$_[0]};
+    my @arg = @{$_[1]};
+
+    foreach my $row (@table) # (0..$#{$table[0]})
+    {
+        # Use hash slice as both lvalue and value.
+        @{$row->[1]}{@arg} = @{$row->[0]}{@proto};
+        shift @{$row};
+    }
+}
+
 
 
 sub main
@@ -99,8 +89,21 @@ sub main
     my @proto = ("dog", "cat");
     my @arg = ("var1", "var2");
     inc_scope(\@proto, \@arg);
-    
-    exit();
+    # printf ("post inc_scope:\n%s\n", Dumper(\@table));
+
+    for(my $row=$#table; $row >= 0; $row--)
+    {
+        my $hr = $table[$row][0];
+        if ($hr->{cat} eq "v2: 1")
+        {
+            $hr->{cat} = $hr->{cat} . ' cat';
+        }
+    }
+
+    dec_scope(\@proto, \@arg);
+    printf ("post dec_scope:\n%s\n", Dumper(\@table));
+
+
     # Split the table, ala if-stmt. I guess it is "outer" because we have a nested "inner" if statement below.
 
     for(my $row=$#table; $row >= 0; $row--)
@@ -112,7 +115,7 @@ sub main
         }
     }
 
-    # printf ("after if stream split:\n%s\n", Dumper(\@table));
+    printf ("after if stream split:\n%s\n", Dumper(\@table));
 
     # Rows remaining in stream zero are the else-stmt.
 
