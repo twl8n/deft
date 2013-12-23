@@ -31,7 +31,9 @@ use session_lib;
 my @sub_stack;
 
 my $main_str = "main:"; # this changes way too often.
+
 my @table;       # the table $table[row][scope] where current scope is the zeroth element
+
 my %deft_func;   # See sub initdeft
 
 my $eenv;        # Hash ref of the current row
@@ -706,8 +708,8 @@ sub freeze_eenv
 
 
 # Usage: set_ref_eenv(\%eenv_copy)
-# set_ref_eenv($#table[$rowc][$scope]); where $scope is always zero
-# set_ref_eenv($#table[$rowc][0]);
+# set_ref_eenv($table[$rowc][$scope]); where $scope is always zero
+# set_ref_eenv($table[$rowc][0]);
 
 # Make the global $eenv a particular record of our choosing, and we
 # better choose a eeref from something like popping the stream.
@@ -722,6 +724,7 @@ sub set_ref_eenv
 	die "undef stream in set_ref_eenv $clist[3] called from $clist[1] line $clist[2], died";
     }
     $eenv = $_[0];
+    printf("sre ref: %ld\n", $eenv);
 }
 
 

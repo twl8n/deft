@@ -13,6 +13,12 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
+- set_eenv() seems not to be working. After calling it, the table has an empty row.
+
+- x don't reset $rowc in rewind. In fact, rewind has no meaning with the new tables which are not rewound.
+
+- x Real unwind() needs to call set_ref_eenv(), not simply return a hash ref.
+
 - x The depth first option is bad. Do not use. Mapping the new rows in new scopes back the original rows would
   require extra bookkeeping. As opposed to a stack-history (aka stack frame) of all rows which is trivial and
   robust.

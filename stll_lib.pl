@@ -41,7 +41,7 @@ my $curr_eeref = 0;
 my $rowc = 1;
 
 # The data table. Probably don't need curr_eeref or stream_head.
-my @table;
+# my @table;
 
 # Clean up from wrong_think_memoizing_rewind(). See wrong_think_memoizing_rewind below.
 sub postusevars
@@ -65,14 +65,15 @@ sub go_unwind
 
 sub dumpt
 {
-    return Dumper(\@table);
+    return Dumper(\@::table);
 }
 
 sub insert_rec
 {
     my $newr = [{}];
-    push(@table, $newr);
-    set_ref_eenv(${$newr}[0]);
+    push(@::table, $newr);
+    # set_ref_eenv(${$newr}[0]);
+    set_ref_eenv($::table[$#::table][0]);
 }
 
 sub dup_insert
@@ -95,11 +96,11 @@ sub get_frame
 sub curr_rec
 {
     # If there aren't any table rows, create one.
-    if ($#table == -1)
+    if ($#::table == -1)
     {
         return clone();
     }
-    return \%{$table[$#table][get_frame()]};
+    return \%{$::table[$#::table][get_frame()]};
 
     # Old:
     # # This might have been a debug and not real code. Zero is the
@@ -350,9 +351,7 @@ sub copy_view_list
 
 sub rewind
 {
-    # This might need to be in some code that the compiler always emits immediately before unwind() like
-    # inc_stream() or something.
-    $rowc = $#table;
+    # Do not reset $rowc here. 
 }
 
 # There is a closure unwind in code_archive.txt.
@@ -365,16 +364,18 @@ sub unwind
 {
     if ($rowc >= 0)
     {
-        my $hr = $table[$rowc][0];
+        set_ref_eenv($::table[$rowc][0]);
+        printf("uwref: %ld\n", $::table[$rowc][0]);
         $rowc--;
-        return $hr;
+        print "rowc: $rowc\n";
+        return 1;
     }
-    return undef;
+    return 0;
 
     # while ($rowc > 0)
     # {
     #     $rowc--;
-    #     set_ref_eenv(($table[$rowc][get_frame()]));
+    #     set_ref_eenv(($::table[$rowc][get_frame()]));
     #     if (get_eenv("_memoz"))
     #     {
     #         copy_view_list(); # sub above. Clears _memoz.
@@ -399,7 +400,7 @@ sub s_unwind
     while ($rowc > 0)
     {
         $rowc--;
-        set_ref_eenv(($table[$rowc][get_frame()]));
+        set_ref_eenv(($::table[$rowc][get_frame()]));
         if (get_eenv('_stream') != $_[0])
         {
             next;
@@ -450,10 +451,10 @@ sub clone
 
     # See insert_rec() for code that inserts a new empty record.
 
-    my $newr = dclone(\@{$table[$rowc]});
-    push(@table, $newr);
+    my $newr = dclone(\@{$::table[$rowc]});
+    push(@::table, $newr);
     set_ref_eenv(${$newr}[0]);
-    return \%{$table[$#table][get_frame()]};
+    return \%{$::table[$#::table][get_frame()]};
 }
 
 # There is an existing Perl keyword reset() so we have to use another name.
@@ -466,7 +467,8 @@ sub clone
 
 sub treset
 {
-    $rowc = $#table;
+    $rowc = $#::table;
+    print "treset: $rowc\n";
 }
 
 

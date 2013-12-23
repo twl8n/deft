@@ -80,10 +80,12 @@ sub main
     foreach my $rowc (0..3)
     {
         $table[$rowc][0] = {var1 => "v1: $rowc",
-                                 var2 => "v2: $rowc",
-                                 var3 => "v3: $rowc",
-                                 _stream => $in_stream};
+                            var2 => "v2: $rowc",
+                            var3 => "v3: $rowc",
+                            _stream => $in_stream};
     }
+
+    print Dumper($table[$#table]);
 
     
     my @proto = ("dog", "cat");
