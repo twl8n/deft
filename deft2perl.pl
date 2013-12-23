@@ -1,4 +1,4 @@
-#!/opt/local/bin/perl
+#!/usr/bin/perl
 
 # This is part of Deft and the DeFindIt Classic Search engine.
 

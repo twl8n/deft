@@ -347,9 +347,12 @@ sub copy_view_list
 
 }
 
+
 sub rewind
 {
-
+    # This might need to be in some code that the compiler always emits immediately before unwind() like
+    # inc_stream() or something.
+    $rowc = $#table;
 }
 
 # There is a closure unwind in code_archive.txt.
@@ -360,25 +363,30 @@ sub rewind
 
 sub unwind
 {
-    # print "unwind: $rowc max: $#table\n";
-    # In try.pl we needed >=
-    # while ($rowc >= 0)
-    while ($rowc > 0)
+    if ($rowc >= 0)
     {
+        my $hr = $table[$rowc][0];
         $rowc--;
-        set_ref_eenv(($table[$rowc][get_frame()]));
-        if (get_eenv("_memoz"))
-        {
-            copy_view_list(); # sub above. Clears _memoz.
-            next;
-        }
-        if ($rowc >= 0)
-        {
-            return 1;
-        }
-        return undef;
+        return $hr;
     }
     return undef;
+
+    # while ($rowc > 0)
+    # {
+    #     $rowc--;
+    #     set_ref_eenv(($table[$rowc][get_frame()]));
+    #     if (get_eenv("_memoz"))
+    #     {
+    #         copy_view_list(); # sub above. Clears _memoz.
+    #         next;
+    #     }
+    #     if ($rowc >= 0)
+    #     {
+    #         return 1;
+    #     }
+    #     return undef;
+    # }
+    # return undef;
 }
 
 
@@ -451,9 +459,14 @@ sub clone
 # There is an existing Perl keyword reset() so we have to use another name.
 # Conflicting keyword silently fails in this case. 
 
+# Exactly like new rewind(), but reset_stream() calls this and reset_stream() is emitted by the compiler.
+
+# This might need to be in some code that the compiler always emits immediately before unwind() like
+# inc_stream() or something.
+
 sub treset
 {
-    $rowc = $#table+1;
+    $rowc = $#table;
 }
 
 

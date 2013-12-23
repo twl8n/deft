@@ -85,9 +85,14 @@ sub main
                                  _stream => $in_stream};
     }
 
+    
     my @proto = ("dog", "cat");
+
+    # print Dumper(\@proto);
+
     my @arg = ("var1", "var2");
-    inc_scope(\@proto, \@arg);
+    # inc_scope(\@proto, \@arg);
+    inc_scope(["dog", "cat"], ["var1", "var2"]);
     # printf ("post inc_scope:\n%s\n", Dumper(\@table));
 
     for(my $row=$#table; $row >= 0; $row--)
@@ -351,7 +356,6 @@ sub rewind
 sub unwind
 {
     # printf ("uw:\n%s\n", Dumper($hr));
-        
     # print "unwind: $rowc\n";
 
     # In this (simplified?) universe, the body of unwind() is an if() statement, not while(). Why would it be
