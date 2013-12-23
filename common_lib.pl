@@ -30,12 +30,8 @@ use session_lib;
 # stack list of the subroutines currently active.
 my @sub_stack;
 
-# my %old_vars;  # hash of var names and their depth, use by garbage_collection()
-# my @depth_vars; # list of lists
-
 my $main_str = "main:"; # this changes way too often.
-my @table;       # the table $table[row][depth]
-my $depth = 0;   # unused?
+my @table;       # the table $table[row][scope] where current scope is the zeroth element
 my %deft_func;   # See sub initdeft
 
 my $eenv;        # Hash ref of the current row
@@ -388,6 +384,10 @@ sub cgi_make_row
 }
 
 
+# dec 22 2013 Need to expunge *depth since the table doesn't have that concept any more. We unshift/shift
+# stack frames onto the table, so the current stack frame is always $table[rows][0], where the current scope
+# is zero.
+
 # dec 28 2006 currently in use, and has been used for some time
 # Clean up local cols created by Deft subroutines.
 # The original version relied on %depth_vars to track which vars
@@ -496,77 +496,40 @@ sub garbage_collection
 #     print "alias_ref: " . Dumper($alias_ref) . "\n";
 # }
 
-# sub xinc_depth
-# {
-#     # This creates a hash to link a local alias name with the actual
-#     # depth.field in the table. It links the function call with the
-#     # function prototype. 'str' => '1.model'.
-#     push(@alias_stack, $alias_ref); 
-#     # See note id2 above.
-#     my %new_alias;
-#     while(@_)
-#     {
-# 	my $proto = shift(@_);
-# 	my $arg = shift(@_);
-# 	# See note id1 above.
-# 	if (! exists($alias_ref->{$proto}))
-# 	{
-# 	    my $output = "unknown arg $arg depth:". get_depth() . "\n";
-# 	    $output .= "proto:$proto\n";
+# inc_scope pushes a new stack frame onto each row stack. The whole ancestor stack is copied so that when it
+# is time to rewind the row has all the previous stack frames necessary to resolve the current row against the
+# row in the previous stack frame.
 
-# 	    foreach my $key (keys(%{$alias_ref}))
-# 	    {
-# 		$output .= "$key:$alias_ref->{$key}\n";
-# 	    }
-# 	    die $output;
-# 	}
-# 	$new_alias{$arg} = $alias_ref->{$proto};
-#     }
-#     $depth++;
-#     $alias_ref = \%new_alias;
-# }
+# @proto is the prototype of the deft subroutine, in otherwords the subroutine-local names of the sub
+# parameters.
 
-sub inc_depth
+# @arg are the args of the call, in otherwords the deft vars in the call.
+
+sub inc_scope 
 {
-    my @proto;
-    my @arg;
-    while(@_)
-    {
-       push(@proto, shift(@_));
-       push(@arg, shift(@_));
-    }
-    foreach my $row (0..$#{$table[0]})
+    my @proto = @{$_[0]};
+    my @arg = @{$_[1]};
+
+    foreach my $row (@table) # (0..$#{$table[0]})
     {
         # Use hash slice as both lvalue and value.
-        @{$table[$#table+1][$row]}{@proto} = @{$table[$#table][$row]}{@arg};
+        my $new_scope;
+        @{$new_scope}{@proto} = @{[@{$row->[0]}{@arg}]};
+        unshift @{$row}, $new_scope;
     }
-    # $depth++;
 }
 
-
-sub dec_depth
+sub dec_scope
 {
-    # The decrement happens in garbage_collection(). We do pop
-    # @sub_stack in garbage_collection(). Anywhere else?
-    my @proto;
-    my @arg;
-    while(@_)
-    {
-       push(@proto, shift(@_));
-       push(@arg, shift(@_));
-    }
-    foreach my $row (0..$#{$table[0]})
+    my @proto = @{$_[0]};
+    my @arg = @{$_[1]};
+
+    foreach my $row (@table) # (0..$#{$table[0]})
     {
         # Use hash slice as both lvalue and value.
-        @{$table[$#table-1][$row]}{@arg} = @{$table[$#table][$row]}{@proto};
+        @{$row->[1]}{@arg} = @{$row->[0]}{@proto};
+        shift @{$row};
     }
-    pop(@table); # pops the current stack frame and all its rows.
-}
-
-sub get_depth
-{
-    # for debugging only
-    return $depth;
 }
 
 
@@ -595,7 +558,7 @@ sub get_depth
 # Try to look up the aliased name. If we don't
 # find it, we must be initializing (instantiating) a local variable.
 # This is a good place to init a local var. We simply need to
-# create the var's name. Also see inc_depth() which does a similar
+# create the var's name. Also see inc_scope() which does a similar
 # operation for Deft subroutine args.
 
 sub set_eenv
@@ -743,7 +706,8 @@ sub freeze_eenv
 
 
 # Usage: set_ref_eenv(\%eenv_copy)
-# set_ref_eenv($#table[$rowc][$depth]);
+# set_ref_eenv($#table[$rowc][$scope]); where $scope is always zero
+# set_ref_eenv($#table[$rowc][0]);
 
 # Make the global $eenv a particular record of our choosing, and we
 # better choose a eeref from something like popping the stream.
@@ -1355,14 +1319,14 @@ sub mark_enclosing
     }
 }
 
-
+# Renamed old var to $mp_scope. Might need fixing.
 sub mark_perl
 {
     my $code_ref = $_[0];
 
     my $max = $#{$code_ref};
     my $pflag = 0;
-    my $depth = 0;
+    my $mp_scope = 0; # mnemonic: mark perl scope
     for(my $xx = 0; $xx <= $max; $xx++)
     {
 	# This could be changed to a type check on [1].
@@ -1379,13 +1343,13 @@ sub mark_perl
 	{
 	    if ($code_ref->[$xx][0] eq '{')
 	    {
-		$depth++;
+		$mp_scope++;
 	    }
 	    elsif ($code_ref->[$xx][0] eq '}')
 	    {
-		$depth--;
+		$mp_scope--;
 	    }
- 	    if ($depth == 0)
+ 	    if ($mp_scope == 0)
  	    {
  		$pflag = 0;
  	    }
@@ -1495,10 +1459,12 @@ sub mark_stream
 # - The end of an entire if statement is if_stop 
 # - The end of the true part of an if-else is if_welse_stop.
 # - The end of an else is else_stop.
+
+# Dec 22 2013 rename old var to $if_scope
 sub mark_if
 {
     my $code_ref = $_[0];
-    my $depth = 0;
+    my $if_scope = 0;
     my %if_hash;
     my %stop_hash;
 
@@ -1506,79 +1472,79 @@ sub mark_if
     for(my $xx = 0; $xx <= $max; $xx++)
     {
 	# debug
-	#$code_ref->[$xx][0] = "# xx:$xx d:$depth\n$code_ref->[$xx][0]";
+	#$code_ref->[$xx][0] = "# xx:$xx d:$if_scope\n$code_ref->[$xx][0]";
 
 	# This could be changed to a type check on [1].
  	if ($code_ref->[$xx][1] == $wrap_if_start ||
 	    $code_ref->[$xx][1] == $wrap_else_start)
  	{
- 	    $depth++;
+ 	    $if_scope++;
 	    # debug
-	    #$code_ref->[$xx][0] = "# start d:$depth\n$code_ref->[$xx][0]";
+	    #$code_ref->[$xx][0] = "# start d:$if_scope\n$code_ref->[$xx][0]";
  	}
 	
-	# Decrement depth at any stop, if_stop or else_stop.
+	# Decrement if_scope at any stop, if_stop or else_stop.
 	# Old-think: only dec for if_stop.
 	
 	if ($code_ref->[$xx][1] == $wrap_if_stop ||
 	    $code_ref->[$xx][1] == $wrap_else_stop)
 	{
-	    $depth--;
-	    $stop_hash{$depth} = $xx;
+	    $if_scope--;
+	    $stop_hash{$if_scope} = $xx;
 	    # debug
-	    #$code_ref->[$xx][0] .= " # d:$depth xx:$xx";
+	    #$code_ref->[$xx][0] .= " # d:$if_scope xx:$xx";
 	}
 	elsif ($code_ref->[$xx][1] == $wrap_if)
 	{
 	    # debug
-	    # $code_ref->[$xx][0] .= " # set ih $depth to $xx ";
-	    $if_hash{$depth} = $xx; # do exists check here
+	    # $code_ref->[$xx][0] .= " # set ih $if_scope to $xx ";
+	    $if_hash{$if_scope} = $xx; # do exists check here
 	}
 	elsif ($code_ref->[$xx][1] == $wrap_elsif )
 	{
 	    # change our ancestor
-	    if (exists($if_hash{$depth}))
+	    if (exists($if_hash{$if_scope}))
 	    {
-		if ($code_ref->[$if_hash{$depth}][1] == $wrap_if)
+		if ($code_ref->[$if_hash{$if_scope}][1] == $wrap_if)
 		{
-		    $code_ref->[$if_hash{$depth}][1] = $wrap_if_else;
+		    $code_ref->[$if_hash{$if_scope}][1] = $wrap_if_else;
 		}
-		elsif ($code_ref->[$if_hash{$depth}][1] == $wrap_elsif)
+		elsif ($code_ref->[$if_hash{$if_scope}][1] == $wrap_elsif)
 		{
-		    $code_ref->[$if_hash{$depth}][1] = $wrap_elsif_else;
+		    $code_ref->[$if_hash{$if_scope}][1] = $wrap_elsif_else;
 		}
-		delete($if_hash{$depth});
+		delete($if_hash{$if_scope});
 	    }
 	    # get ready for any descendents
-	    $if_hash{$depth} = $xx; # do exists check here
+	    $if_hash{$if_scope} = $xx; # do exists check here
 	}
 	elsif ($code_ref->[$xx][1] == $wrap_else)
 	{
 	    # debug
-	    #$code_ref->[$xx][0] .= " # else-depth:$depth sh:$stop_hash{$depth} ih:$if_hash{$depth}";
-	    if (exists($if_hash{$depth}))
+	    #$code_ref->[$xx][0] .= " # else-scope:$if_scope sh:$stop_hash{$if_scope} ih:$if_hash{$if_scope}";
+	    if (exists($if_hash{$if_scope}))
 	    {
-		if ($code_ref->[$if_hash{$depth}][1] == $wrap_if)
+		if ($code_ref->[$if_hash{$if_scope}][1] == $wrap_if)
 		{
-		    $code_ref->[$if_hash{$depth}][1] = $wrap_if_else;
+		    $code_ref->[$if_hash{$if_scope}][1] = $wrap_if_else;
 		}
-		elsif ($code_ref->[$if_hash{$depth}][1] == $wrap_elsif)
+		elsif ($code_ref->[$if_hash{$if_scope}][1] == $wrap_elsif)
 		{
-		    $code_ref->[$if_hash{$depth}][1] = $wrap_elsif_else;
+		    $code_ref->[$if_hash{$if_scope}][1] = $wrap_elsif_else;
 		}
-		delete($if_hash{$depth});
+		delete($if_hash{$if_scope});
 
-		if ($code_ref->[$stop_hash{$depth}][1] == $wrap_if_stop)
+		if ($code_ref->[$stop_hash{$if_scope}][1] == $wrap_if_stop)
 		{
-		    $code_ref->[$stop_hash{$depth}][1] = $wrap_if_welse_stop;
+		    $code_ref->[$stop_hash{$if_scope}][1] = $wrap_if_welse_stop;
 		    # debug
-		    #$code_ref->[$stop_hash{$depth}][0] .= " # changed to wrap_if_welse_stop";
+		    #$code_ref->[$stop_hash{$if_scope}][0] .= " # changed to wrap_if_welse_stop";
 		}
-		delete($stop_hash{$depth});
+		delete($stop_hash{$if_scope});
 	    }
 	}
 	
-	# Depth zero if_hash is overwritten by the next "if",
+	# If_Scope zero if_hash is overwritten by the next "if",
 	# if there was no else. At one point we cleaned up the if_hash
 	# here (at this line), but that was a bug.
     }
@@ -1592,7 +1558,6 @@ sub mark_if
 sub mark_starts
 {
     my $code_ref = $_[0];
-    my $depth = 0;
 
     for(my $xx = 0; $xx < $#{$code_ref}; $xx++)
     {
@@ -1753,7 +1718,6 @@ join_multi();
 sub gen_agg
 {
     my $code_ref = $_[0];
-    my $depth = 0;
     # start at zero, end one short because we check $xx+1.
 
     for(my $xx = 0; $xx < $#{$code_ref}; $xx++)
@@ -1818,7 +1782,6 @@ rewind();
 sub gen_scalar
 {
     my $code_ref = $_[0];
-    my $depth = 0;
     my $s_flag = 0; # true while we have multiple scalar lines
     my $code_str = "";
     my $last_scalar_line = -1;
@@ -2047,7 +2010,6 @@ sub id_args
 sub gen_start_stop
 {
     my $code_ref = $_[0];
-    my $depth = 0;
     for(my $xx = 0; $xx <= $#{$code_ref}; $xx++)
     {
 	# print "cr2top:$code_ref->[$xx][2]\n";
@@ -2057,12 +2019,12 @@ sub gen_start_stop
 
 	    my $id_args = id_args($code_ref->[$xx][2]);
 	    # print "cr2:$code_ref->[$xx][2] ida:$id_args\n";
-	    $code_ref->[$xx][0] .= "\ninc_depth($id_args);";
+	    $code_ref->[$xx][0] .= "\ninc_scope($id_args);";
 	}
 	
 	if ($code_ref->[$xx][1] == $wrap_sub_stop)
 	{
-	    $code_ref->[$xx][0] = "dec_depth();\n$code_ref->[$xx][0]";
+	    $code_ref->[$xx][0] = "dec_scope($id_args);\n$code_ref->[$xx][0]";
 	}
     }
 }
@@ -2070,7 +2032,6 @@ sub gen_start_stop
 sub gen_dsub
 {
     my $code_ref = $_[0];
-    my $depth = 0;
     for(my $xx = 0; $xx <= $#{$code_ref}; $xx++)
     {
 	if ($code_ref->[$xx][1] == $wrap_dsub)
@@ -2083,7 +2044,6 @@ sub gen_dsub
 sub gen_main
 {
     my $code_ref = $_[0];
-    my $depth = 0;
     for(my $xx = 0; $xx <= $#{$code_ref}; $xx++)
     {
 	if ($code_ref->[$xx][1] == $wrap_main_start)
