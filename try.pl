@@ -29,7 +29,8 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 
 my @table;
 my $rowc = 0;
-# What is scope? Only for subroutines?
+
+# What is scope? Only for subroutines? (Apparently only for subs since it isn't used in this demo.)
 my $scope = 0;
 
 main();

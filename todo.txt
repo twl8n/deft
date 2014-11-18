@@ -13,7 +13,15 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
-- set_eenv() seems not to be working. After calling it, the table has an empty row.
+- + see try.pl for a demo of if() and stream splitting using text labels. This type of splitting needs to be
+  ported to the code that compiles if() statements. 
+
+- Check/add dclone() from Storable module to the code that splits the streams. 
+
+- Note that try.pl does not demonstrate stack depth and that inc_depth() and dec_depth() are not yet used
+  because we don't have an example of subroutines.
+
+- x (fixed, apparently) set_eenv() seems not to be working. After calling it, the table has an empty row.
 
 - x don't reset $rowc in rewind. In fact, rewind has no meaning with the new tables which are not rewound.
 

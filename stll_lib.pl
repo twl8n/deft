@@ -365,7 +365,7 @@ sub unwind
     if ($rowc >= 0)
     {
         set_ref_eenv($::table[$rowc][0]);
-        printf("uwref: %ld\n", $::table[$rowc][0]);
+        # printf("uwref: %ld\n", $::table[$rowc][0]);
         $rowc--;
         print "rowc: $rowc\n";
         return 1;
@@ -457,18 +457,18 @@ sub clone
     return \%{$::table[$#::table][get_frame()]};
 }
 
-# There is an existing Perl keyword reset() so we have to use another name.
-# Conflicting keyword silently fails in this case. 
-
 # Exactly like new rewind(), but reset_stream() calls this and reset_stream() is emitted by the compiler.
 
 # This might need to be in some code that the compiler always emits immediately before unwind() like
 # inc_stream() or something.
 
+# There is an existing Perl keyword reset() so we have to use another name.
+# Conflicting keyword silently fails in this case. 
+
 sub treset
 {
     $rowc = $#::table;
-    print "treset: $rowc\n";
+    print "treset (rewind): $rowc\n";
 }
 
 

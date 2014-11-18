@@ -27,6 +27,7 @@ require "testlib.deft";
     if ($units eq "cid")
     {
 	$displacement = (16.39 * $displacement) / 1000;
+        dump_stream("cid");
     }
     else
     {
@@ -39,6 +40,8 @@ require "testlib.deft";
     {
 	$displacement = ($displacement * 0.236588237);
     }
+    dump_stream("main_displacement");
+
     
     # Verify that the compiler won't choke on strings
     # containing special characters

@@ -724,7 +724,7 @@ sub set_ref_eenv
 	die "undef stream in set_ref_eenv $clist[3] called from $clist[1] line $clist[2], died";
     }
     $eenv = $_[0];
-    printf("sre ref: %ld\n", $eenv);
+    # printf("sre ref: %ld\n", $eenv);
 }
 
 
