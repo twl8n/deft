@@ -29,6 +29,7 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 
 my @table;
 my $rowc = 0;
+my $hr;
 
 # What is scope? Only for subroutines? (Apparently only for subs since it isn't used in this demo.)
 my $scope = 0;
@@ -44,13 +45,12 @@ main();
 
 sub main
 {
-    # yes, globalish.
-    our $hr;
-
     # Initialize the scope zero table with 1 row.
     $table[0][0] = {_stream => ''};
     
-    # Some kind of magic happens where assigning the vars in fref changes @table. I wonder how that happens?
+    # For read_tab_data() to create columns, it needs more code, and it would have to interact differently
+    # with unwind().
+    newc('sequence', 'make', 'model', 'displacement','units');
 
     my $fref = sub
     { 
@@ -84,7 +84,7 @@ sub main
         {
             $liters = ($displacement * 0.236588237);
         }
-        elsif ($units eq 'liters')
+        elsif ($units eq 'liter')
         {
             $liters = $displacement;
         }
@@ -184,8 +184,6 @@ sub newc
 
 sub unwind
 {
-    # yes, globalish.
-    our $hr;
     my $fref = $_[0];
     our $row;
 
@@ -236,6 +234,25 @@ sub unwind
     print "zero: $_[0]\n";
 }
 
+
+# I guess $rowc is a global. Should this be inside unwind()?
+sub clone
+{
+    my $newr = dclone(\@{$table[$rowc]});
+    push(@table, $newr);
+    return \%{$table[$#table][$scope]};
+}
+
+# There is an existing function reset() so we have to use another name.
+# Conflicting functions silently fail.
+sub treset
+{
+    print "resetting\n";
+    $rowc = $#table+1;
+    $scope = 0;
+}
+
+
 # read_tab_data("./demo.dat", 'sequence', 'make', 'model', 'displacement','units');
 sub read_tab_data
 {
@@ -268,7 +285,7 @@ sub read_tab_data
         my $first = 1;
         while ($temp = <IN>)
         {
-            my $new_hr;
+            my $new_hr = $hr;
             # Don't use split because Perl will truncate the returned array due to an undersireable feature
             # where arrays returned and assigned have null elements truncated.
 
@@ -284,43 +301,37 @@ sub read_tab_data
                 # Clone the current record, and push the clone onto the table.
                 $new_hr = clone();
                 # set_ref_eenv($hr);
-            }
-            $first = 0;
-            for (my $xx=0; $xx<=$#va && $temp; $xx++)
+                for (my $xx=0; $xx<=$#va && $temp; $xx++)
+                {
+                    if ($temp =~ s/(.*?)[\t\n]//)
+                    {
+                        no strict;
+                        $new_hr->{$va[$xx]} = $1;
+                    }
+                    else
+                    {
+                        $new_hr->{$va[$xx]} = '';
+                    }
+                    # set_eenv($va[$xx], $1);
+                }
+            } 
+            else
             {
-                # The regex needs an if() test.  If there are too few
-                # columns, the missing columns will have the value of the
-                # last column that existed. This is the old regex $1
-                # problem. (Fixed by doing if-else on the subsititution.)
-                if ($temp =~ s/(.*?)[\t\n]//)
+                $first = 0;
+                for (my $xx=0; $xx<=$#va && $temp; $xx++)
                 {
-                    $new_hr->{$va[$xx]} = $1;
+                    if ($temp =~ s/(.*?)[\t\n]//)
+                    {
+                        no strict;
+                        ${$va[$xx]} = $1;
+                    }
+                    else
+                    {
+                        ${$va[$xx]} = '';
+                    }
                 }
-                else
-                {
-                    $new_hr->{$va[$xx]} = '';
-                }
-                # set_eenv($va[$xx], $1);
             }
         }
     }
     close(IN);
-}
-
-
-# I guess $rowc is a global. Should this be inside unwind()?
-sub clone
-{
-    my $newr = dclone(\@{$table[$rowc]});
-    push(@table, $newr);
-    return \%{$table[$#table][$scope]};
-}
-
-# There is an existing function reset() so we have to use another name.
-# Conflicting functions silently fail.
-sub treset
-{
-    print "resetting\n";
-    $rowc = $#table+1;
-    $scope = 0;
 }
