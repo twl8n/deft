@@ -45,8 +45,11 @@ main();
 
 sub main
 {
-    # Initialize the scope zero table with 1 row.
-    $table[0][0] = {_stream => ''};
+    # Initialize the table with 1 row and a single column. We aren't using $scope yet. It is only used for
+    # subroutine stack depth.  Streams have become meaningless, since any column could be a predicate, but
+    # we'll go with a default column _stream for now. Everything about Deft assumes at least 1 row, but makes
+    # no assumptions about existence of any columns.
+    $table[0][$scope] = {_stream => ''};
     
     # For read_tab_data() to create columns, it needs more code, and it would have to interact differently
     # with unwind().
@@ -64,8 +67,6 @@ sub main
         print Dumper($hr);
     };
     unwind($fref);
-
-    # push(@exec, $fref);
 
     newc('liters');
 
@@ -100,76 +101,12 @@ sub main
 
     exit();
 
-    # Rows where _stream eq '' are else.
-
-    # Run the if records first, although order doesn't matter.  Cool side effecto of cloning: The new row
-    # inherits the _stream, so new rows won't run by the else code below.
-
-    for(my $row=$#table; $row >= 0; $row--)
-    {
-        my $hr = $table[$row][$scope];
-        if ($hr->{_stream} eq 'outer_if')
-        {
-            $hr->{var1} .= "pie (outer)";
-            my $newr = dclone(\@{$table[$row]});
-            $newr->[$scope]->{var1} = "new row from var1 (outer)";
-            push(@table, $newr);
-        }
-    }
-
-    printf ("post outer:\n%s\n", Dumper(\@table));
-
-    # This isn't an inner if, just a second following if block based on the same outer_if predicate.
-
-    for(my $row=$#table; $row >= 0; $row--)
-    {
-        my $hr = $table[$row][$scope];
-        if ($hr->{_stream} eq 'outer_if' && $hr->{var2} eq "v2: 2")
-        {
-            $hr->{var2} .= " cheesecake (outer, pre-inner split)";
-            my $newr = dclone(\@{$table[$row]});
-            $newr->[$scope]->{var1} = "modified, cloned row (inner), originally var2. r:$row";
-            push(@table, $newr);
-        }
-    }
-
-    # printf ("post inner:\n%s\n", Dumper(\@table));
-
-    # We can run the else now or later, it doesn't matter.
-
-    # Seeing as _stream has text in it, I can't help but wonder if $in_stream+2 will work, or if it will even
-    # do something rational.
-
-    # It appears we don't really use streams, except that while there are active if-else statements, the two
-    # (or how many ever) streams need unique values.
-
-    for(my $row=$#table; $row >= 0; $row--)
-    {
-        my $hr = $table[$row][$scope];
-        if ($hr->{_stream} ne 'outer_if')
-        {
-            $hr->{var1} .= "cake(else)";
-        }
-    }
-
-    printf ("post-else:\n%s\n", Dumper(\@table));
-
-    # We don't need to "merge" all the streams, but if we want to reuse a predicate column it is smart to zero it out.
-
-    for(my $row=$#table; $row >= 0; $row--)
-    {
-        my $hr = $table[$row][$scope];
-        $hr->{_stream} = 0;
-    }
-
-    printf ("final:\n%s\n", Dumper(\@table));
-
-    exit();
-
-
 } # end main
 
-# Create new column, which must happen for all rows
+# Create new column, which must happen for all rows. This is an aggregating new column sub. It is may be
+# possible to create one that works inside unwind(), although given how unwind() assigns $$key back to the
+# hash ref, I'm not sure a non-aggregating newc is possible.
+
 sub newc
 {
     for(my $row=$#table; $row >= 0; $row--)
@@ -252,17 +189,26 @@ sub treset
     $scope = 0;
 }
 
+# For read_tab_data() to create columns, it needs more code, and it would have to interact differently
+# with unwind().
+
+# Current read_tab_data() is perl code, that is non-aggregating and must be called inside unwind(). If it were
+# aggregating code with an internal unwind loop it would also need to know about predicate/control
+# columns. Maybe it is better this way, since this should behave correctly when called from inside an if() in
+# an fsub.
 
 # read_tab_data("./demo.dat", 'sequence', 'make', 'model', 'displacement','units');
 sub read_tab_data
 {
     my $data_file = shift(@_); # first arg is data file $_[0]
-    my @va = @_; # remaining args are column names.
+    my @va = @_; # remaining args are column names, va mnemonic for variables.
     
     my($temp);
     my @fields;
     
-    # Crossmultiply incoming stream with new input.
+    # Crossmultiply the current record with a tab separated file. As written, this is non-aggregating code, so
+    # it only knows about one record (the current record). It does know how to clone(), but as far as it
+    # knows, there is only one record.
     
     my $log_flag = 0;
 
@@ -275,8 +221,6 @@ sub read_tab_data
         }
         # At least in the real Deft simply exiting here leaves all the downstream ancestors hanging
         # around. rewind, don't exit.  
-
-        # exit(1);
     }
     else
     {
