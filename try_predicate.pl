@@ -44,6 +44,9 @@ main();
 
 sub main
 {
+    # yes, globalish.
+    our $hr;
+
     my $in_stream = 0;
 
     # Initialize the scope zero table with 3 rows.
@@ -65,8 +68,40 @@ sub main
     #     }
     # }
 
-    
-    unwind();
+
+    # Some kind of magic happens where assigning the vars in fref changes @table. I wonder how that happens?
+
+    my $fref = sub
+    { 
+        no strict;
+        if ($var1 eq "v1: 1" || $var1 eq "v1: 2")
+        {
+            $_stream = 'outer_if';
+        }
+        print Dumper($hr);
+
+    };
+    unwind($fref);
+
+    # push(@exec, $fref);
+
+    $fref = sub 
+    {
+        no strict;
+        $sequence = 1;
+        print "var1: $var1\n";
+        $var1 .= "stuff";
+    };
+    unwind($fref);
+    # push(@exec, $fref);
+
+    $fref = sub
+    {
+        no strict;
+        print Dumper($hr);
+    };
+    # push(@exec, $fref);
+    unwind($fref);
 
     exit();
 
@@ -152,45 +187,14 @@ sub newc
     }
 }
 
-
 sub unwind
 {
-    # my $fref = $_[0];
+    # yes, globalish.
+    our $hr;
+    my $fref = $_[0];
     my $row;
     my @exec; # list of subroutine pointers.
-    my $hr;
     
-    # Some kind of magic happens where assigning the vars in fref changes @table. I wonder how that happens?
-
-    my $fref = sub
-    { 
-        no strict;
-        if ($var1 eq "v1: 1" || $var1 eq "v1: 2")
-        {
-            $_stream = 'outer_if';
-        }
-        print Dumper($hr);
-
-    };
-    push(@exec, $fref);
-
-    $fref = sub 
-    {
-        no strict;
-        $sequence = 1;
-        print "var1: $var1\n";
-        $var1 .= "stuff";
-    };
-    push(@exec, $fref);
-
-    $fref = sub
-    {
-        no strict;
-        print Dumper($hr);
-    };
-    push(@exec, $fref);
-
-
     sub print_row
     {
         print "row: $row\n";
@@ -220,23 +224,19 @@ sub unwind
 
     print "zero: $_[0]\n";
 
-    foreach my $fref (@exec)
+    for ($row=$#table; $row >= 0; $row--)
     {
-        print "have fref: $fref\n";
-        for ($row=$#table; $row >= 0; $row--)
+        $hr = $table[$row][$scope];
         {
-            $hr = $table[$row][$scope];
+            no strict;
+            foreach my $key (keys(%{$hr}))
             {
-                no strict;
-                foreach my $key (keys(%{$hr}))
-                {
-                    $$key = $hr->{$key};
-                }
-                &$fref();
-                foreach my $key (keys(%{$hr}))
-                {
-                    $hr->{$key} = $$key;
-                }
+                $$key = $hr->{$key};
+            }
+            &$fref();
+            foreach my $key (keys(%{$hr}))
+            {
+                $hr->{$key} = $$key;
             }
         }
     }
