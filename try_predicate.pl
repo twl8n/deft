@@ -47,60 +47,55 @@ sub main
     # yes, globalish.
     our $hr;
 
-    my $in_stream = 0;
-
-    # Initialize the scope zero table with 3 rows.
-    foreach my $rowc (0..3)
-    {
-        $table[$rowc][0] = {var1 => "v1: $rowc",
-                            var2 => "v2: $rowc",
-                            var3 => "v3: $rowc",
-                            _stream => $in_stream};
-    }
-
-    # Split the table, ala if-stmt. I guess it is "outer" because we have a nested "inner" if statement below.
-    # for(my $row=$#table; $row >= 0; $row--)
-    # {
-    #     my $hr = $table[$row][$scope];
-    #     if ($hr->{var1} eq "v1: 1" || $hr->{var1} eq "v1: 2" )
-    #     {
-    #         $hr->{_stream} = 'outer_if';
-    #     }
-    # }
-
-
+    # Initialize the scope zero table with 1 row.
+    $table[0][0] = {_stream => ''};
+    
     # Some kind of magic happens where assigning the vars in fref changes @table. I wonder how that happens?
 
     my $fref = sub
     { 
-        no strict;
-        if ($var1 eq "v1: 1" || $var1 eq "v1: 2")
-        {
-            $_stream = 'outer_if';
-        }
-        print Dumper($hr);
-
+        read_tab_data("./demo.dat", 'sequence', 'make', 'model', 'displacement','units');
     };
     unwind($fref);
-
-    # push(@exec, $fref);
-
-    $fref = sub 
-    {
-        no strict;
-        $sequence = 1;
-        print "var1: $var1\n";
-        $var1 .= "stuff";
-    };
-    unwind($fref);
-    # push(@exec, $fref);
 
     $fref = sub
     {
         no strict;
         print Dumper($hr);
     };
+    unwind($fref);
+
     # push(@exec, $fref);
+
+    newc('liters');
+
+    $fref = sub 
+    {
+        no strict;
+        if ($units eq "cid")
+        {
+            $liters = (16.39 * $displacement) / 1000;
+        }
+        elsif ($units eq "cc")
+        {
+            $liters = ($displacement / 1000);
+        }
+        elsif ($units eq "cup")
+        {
+            $liters = ($displacement * 0.236588237);
+        }
+        elsif ($units eq 'liters')
+        {
+            $liters = $displacement;
+        }
+    };
+    unwind($fref);
+
+    $fref = sub
+    {
+        no strict;
+        print Dumper($hr);
+    };
     unwind($fref);
 
     exit();
@@ -192,8 +187,24 @@ sub unwind
     # yes, globalish.
     our $hr;
     my $fref = $_[0];
-    my $row;
-    my @exec; # list of subroutine pointers.
+    our $row;
+
+    for ($row=$#table; $row >= 0; $row--)
+    {
+        $hr = $table[$row][$scope];
+        {
+            no strict;
+            foreach my $key (keys(%{$hr}))
+            {
+                $$key = $hr->{$key};
+            }
+            &$fref();
+            foreach my $key (keys(%{$hr}))
+            {
+                $hr->{$key} = $$key;
+            }
+        }
+    }
     
     sub print_row
     {
@@ -223,23 +234,6 @@ sub unwind
     }
 
     print "zero: $_[0]\n";
-
-    for ($row=$#table; $row >= 0; $row--)
-    {
-        $hr = $table[$row][$scope];
-        {
-            no strict;
-            foreach my $key (keys(%{$hr}))
-            {
-                $$key = $hr->{$key};
-            }
-            &$fref();
-            foreach my $key (keys(%{$hr}))
-            {
-                $hr->{$key} = $$key;
-            }
-        }
-    }
 }
 
 # read_tab_data("./demo.dat", 'sequence', 'make', 'model', 'displacement','units');
@@ -251,7 +245,7 @@ sub read_tab_data
     my($temp);
     my @fields;
     
-    # Crossmultiply incoming stream with new input.  Normally, there is only one incoming record.
+    # Crossmultiply incoming stream with new input.
     
     my $log_flag = 0;
 
@@ -274,6 +268,7 @@ sub read_tab_data
         my $first = 1;
         while ($temp = <IN>)
         {
+            my $new_hr;
             # Don't use split because Perl will truncate the returned array due to an undersireable feature
             # where arrays returned and assigned have null elements truncated.
 
@@ -286,9 +281,9 @@ sub read_tab_data
 
             if (! $first)
             {
-                # dup_insert(curr_rec());
-                my $hr = clone();
-                set_ref_eenv($hr);
+                # Clone the current record, and push the clone onto the table.
+                $new_hr = clone();
+                # set_ref_eenv($hr);
             }
             $first = 0;
             for (my $xx=0; $xx<=$#va && $temp; $xx++)
@@ -296,15 +291,20 @@ sub read_tab_data
                 # The regex needs an if() test.  If there are too few
                 # columns, the missing columns will have the value of the
                 # last column that existed. This is the old regex $1
-                # problem.
-                    
-                $temp =~ s/(.*?)[\t\n]//;
-                set_eenv($va[$xx], $1);
+                # problem. (Fixed by doing if-else on the subsititution.)
+                if ($temp =~ s/(.*?)[\t\n]//)
+                {
+                    $new_hr->{$va[$xx]} = $1;
+                }
+                else
+                {
+                    $new_hr->{$va[$xx]} = '';
+                }
+                # set_eenv($va[$xx], $1);
             }
         }
     }
     close(IN);
-    # unwind($func);
 }
 
 
