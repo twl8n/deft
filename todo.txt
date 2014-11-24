@@ -13,6 +13,28 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
+- nov 19 2014 Noah suggests predicate column create paired with an aggregating block that takes the column and
+  runs all rows for true values in the control column. Predicate controls are unlike if-else which require the
+  compiler to emit code in the order of the original if, and requires joining streams. 
+
+if(test, $target_column)
+
+where($target_column)
+{
+  do_things();
+}
+
+if(test, $target_column, "true value")
+
+where($target_column eq "value1")
+{
+  do_things();
+}
+where($target_column eq "value1" || $target_column eq "value2")
+{
+  do_things();
+}
+
 - + see try.pl for a demo of if() and stream splitting using text labels. This type of splitting needs to be
   ported to the code that compiles if() statements. 
 
