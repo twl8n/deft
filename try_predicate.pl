@@ -53,7 +53,7 @@ sub main
     
     # For read_tab_data() to create columns, it needs more code, and it would have to interact differently
     # with unwind().
-    newc('sequence', 'make', 'model', 'displacement','units');
+    # newc('sequence', 'make', 'model', 'displacement','units');
 
     my $fref = sub
     { 
@@ -95,9 +95,19 @@ sub main
     $fref = sub
     {
         no strict;
+        $model = ucfirst($model);
+        $make =~ s/^([a-z]{1})/uc($1)/e;
+        $make =~ s/(\W{1}[a-z]{1})/uc($1)/e;
+    };
+    unwind($fref);
+
+    $fref = sub
+    {
+        no strict;
         print Dumper($hr);
     };
     unwind($fref);
+
 
     exit();
 
@@ -167,8 +177,6 @@ sub unwind
         }
         # push(@table, $newr);
     }
-
-    print "zero: $_[0]\n";
 }
 
 
@@ -242,7 +250,9 @@ sub read_tab_data
 
             if (! $first)
             {
-                # Clone the current record, and push the clone onto the table.
+                # Clone the current record, and push the clone onto the table. Since the record is cloned, we
+                # only need to deal with the hash keys, and not the $$vars. unwind() won't see these cloned
+                # records in this interation.
                 $new_hr = clone();
                 # set_ref_eenv($hr);
                 for (my $xx=0; $xx<=$#va && $temp; $xx++)
@@ -256,21 +266,26 @@ sub read_tab_data
                     {
                         $new_hr->{$va[$xx]} = '';
                     }
-                    # set_eenv($va[$xx], $1);
                 }
             } 
             else
             {
+                # This is the actual current record, and unwind will assign the $$vars back to the hash,
+                # however that back-assignment is in a loop over the keys of the hash, so we have to add the
+                # hash keys and $$vars.
                 $first = 0;
                 for (my $xx=0; $xx<=$#va && $temp; $xx++)
                 {
                     if ($temp =~ s/(.*?)[\t\n]//)
                     {
                         no strict;
+                        print "data: $1\n";
+                        $new_hr->{$va[$xx]} = $1;
                         ${$va[$xx]} = $1;
                     }
                     else
                     {
+                        $new_hr->{$va[$xx]} = '';
                         ${$va[$xx]} = '';
                     }
                 }
