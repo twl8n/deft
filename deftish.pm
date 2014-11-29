@@ -30,6 +30,16 @@ my $hr;
 # What is scope? Only for subroutines? (Apparently only for subs since it isn't used in the demo.)
 my $scope = 0;
 
+# Goodies used by runt which is dcc, emit, get_bpath, and keystr.
+
+use Storable qw(freeze thaw);
+my $distinct;
+my @sort;
+my %sort_vals;
+my %sort_ties;
+my $newvar;
+my $where_eval;
+
 use strict;
 
 # Storable works with our list of lists. Note the function is called dclone().
@@ -71,7 +81,10 @@ sub newc
 
 sub unwind
 {
-    my $fref = $_[0];
+    # The first arg must be a function ref, and we'll shift it off so we can pass the rest of the arg list to
+    # $fref. This is probably both dangerous and powerful.
+    my $fref = shift(@_);
+    
     our $row;
 
     for ($row=$#table; $row >= 0; $row--)
@@ -83,7 +96,8 @@ sub unwind
             {
                 $$key = $hr->{$key};
             }
-            &$fref();
+            &$fref(@_);
+            # Where are duplicate records eliminated? 
             foreach my $key (keys(%{$hr}))
             {
                 $hr->{$key} = $$key;
@@ -210,5 +224,287 @@ sub read_tab_data
     }
     close(IN);
 }
+
+# Usage:
+# value = get_eenv_handle("col",$hashref)
+# It isn't a handle, but the word "ref" is already 
+# in use. Used by keycmp() in runtlib.pl
+sub get_eenv_handle
+{
+    return $_[1]->{$_[0]};
+}
+
+sub get_ref_eenv
+{
+    return $hr;
+}
+
+sub get_eenv
+{
+    return $hr->{$_[0]};
+}
+
+sub slice_eenv
+{
+    my @val;
+    # Not working. Not Array, etc errors.
+    # my @val = @{$hr}{@_};
+    foreach my $item (@{$_[0]})
+    {
+        push(@val, $hr->{$item});
+    }
+    return \@val;
+}
+
+
+# dcc() originally in runtlib.pl. dcc() is a set up wrapper for emit, so maybe we can call emit directly?
+# Maybe not. At least not until we start passing functions that handle the distinct, where and sort.
+
+# Declare Control Column
+# All the action starts and ends here.
+# Repeating template
+#
+# dcc("distinct_t",             # name of new column aka newvar
+#     "title",                  # dictinct on this column aka agg_spec
+#     [""],                     # where 
+#     ["rank,dn", "title,at"]); # sort
+#
+# dcc("distinct_dt",
+#     "description,title",
+#     [""],
+#     [","]);
+
+sub dcc
+{
+    $newvar = $_[0];
+    $distinct = $_[1];
+    my @where_arg = @{$_[2]};
+    my @sort_arg = @{$_[3]};
+    undef(%::exists);
+    undef(@sort);
+    undef(%sort_vals);
+    undef(%sort_ties);
+    $where_eval = "1";
+
+    if ($distinct =~ m/\s+/)
+    {
+	write_log("arg 1 to dcc() aggregate $distinct must not contain whitespace");
+	die "arg 1 to dcc() aggregate $distinct must not contain whitespace\n";
+    }
+
+    # The aggregator must not include records for which the
+    # the keystr() is empty for $distinct. Remember that $distinct can 
+    # be something like "$title,$description" and $distinct is used
+    # as an array slice. 
+
+    my $where_tween = "&&";
+    foreach my $wc (@where_arg)
+    {
+	if ($wc =~ m/(.*?)\s+(.*)/)
+	{
+	    # This will be eval'd in emit(); It must be sypatico with the runtime
+	    # environment of emit().
+	    $where_eval .= " $where_tween (get_eenv('$1') $2)";
+	}
+    }
+    my $xx = 0;
+    foreach my $sa (@sort_arg)
+    {
+	my @temp = split(',',$sa);
+	$sort[$xx][0] = $temp[0];
+	$sort[$xx][1] = $temp[1];
+	$xx++;
+    }
+    emit();
+}
+
+
+# We want a list slice 1,2,3 of eenv
+# Believe it or not, an array is a legitimate arg for a hash slice.
+# Change join's first arg from " ," to ", " assuming Noah made a typo.
+#
+# It is possible that this will be called with values that do not result 
+# in a non-null list slice. Use a regex so we don't return
+# ", " since there are things calling keystr() that rely on non-matching 
+# list slice to return an empty string.
+
+sub keystr
+{
+    my @temp = split(',', $_[0]);
+    my $slice_ref = slice_eenv(\@temp);
+
+    # This if statement is only here to handle null records,
+    # instead of the regex we used to use.
+    # When we can handle null records, keystr() will never 
+    # be called on a null record because null records won't rewind.
+    # Without some kind of null record (or null keystr()) test, records
+    # without any of the aggregated columns will dcc() as true and will emit.
+
+    if ($#{$slice_ref} == -1)
+    {
+	return undef;
+    }
+    my $eval_this = join(', ', @{$slice_ref});
+    return $eval_this;
+}
+
+# Aggregation and where are evaluated separately.
+# Records which fail the where eval are not processed further,
+# however, they still need a valid value for $newvar, and that value is zero.
+# Zero will prevent them from emitting in the render phase.
+# Note: any where test of the parent must be applied to children.
+
+# Existing values have the same $newvar as the value had when we first found it.
+# E.g. all duplicates have same newvar.
+
+# Check defined($ks_val) instead of just $ks_val since keystr() might return
+# a value of zero or simply a null string. If there are none of the aggregated
+# columns in the current record, keystr() will return undef.
+
+sub emit
+{
+    my $fref = sub
+    {
+        my $bpath = 0; # Records which fail the where, don't emit.
+        
+        # where eval. We are only sorting, not filtering. Could have a function ref for this.
+        # Seems like a (1) would be an easy debugging shortcut.
+        if (eval($where_eval)) 
+        {
+            my $ks_val = keystr($distinct);
+            if (defined($ks_val) && exists($::exists{$ks_val}))
+            {
+                $bpath = $::exists{$ks_val};
+                no strict;
+                print "exists:$newvar gets:$hr->{$newvar} $$newvar bpath: $bpath\n";
+            }
+            else
+            {
+                $bpath = &get_bpath($ks_val);
+                no strict;
+                print "new:$newvar gets:$hr->{$newvar}  $$newvar bpath: $bpath\n";
+            }
+        }
+        no strict;
+        $$newvar = $bpath;
+        $hr->{$newvar} = $bpath;
+        # rewind(\%urh);
+    };
+    unwind($fref);
+}
+
+# Build the key for the current record. This is 
+# essentially a binary tree branching path with 'a' and 'g'
+# the two directions at each node. We use the character 'c' to
+# denote a tie in the tree. Stablility is meaningless in Deft
+# since we don't care about row order. This sort (get_bpath) is not
+# stable on row order for tied rows.
+
+# Note 1
+# Global %sort_ties keeps a running list of ties.
+# This code extents the use of 'c'. The new, additional use is 
+# to indicate a tie in an 'ag' string. The only previous use was
+# as the join character of t strings.
+# You may recollect that 't' string that contain doc structure 
+# (e.g. portions of the template controlled by the control spec).
+# 'ag' strings contain row ordering.
+
+sub get_bpath
+{
+    my $keystr = $_[0];
+
+    my $bpath = 'g';
+    my $cmp_val = 1;
+    while (exists($sort_vals{$bpath}))
+    {
+	$cmp_val = keycmp($sort_vals{$bpath});
+	if ($cmp_val > 0)
+	{
+	    $bpath .= 'a';
+	}
+	elsif ($cmp_val < 0)
+	{
+	    $bpath .= 'g';
+	}
+	else
+	{
+	    # Tie detected. See Note 1 above.
+	    
+	    $sort_ties{$bpath}++;
+	    $bpath .= 'c' x $sort_ties{$bpath};
+	}
+    }
+    # Save two assignments and memory for the get_ref_eenv() 
+    # when there is a tie.
+    # Get Noah to explain this in more detail. the following
+    # if only hits where there is *not* a tie, and not visa-versa.
+
+    if ($cmp_val)
+    {
+	$sort_vals{$bpath} = get_ref_eenv();
+    }
+    $::exists{$keystr} = $bpath;
+    return ($bpath);
+}
+
+sub keycmp
+{
+    my $key_a = $_[0]; # $sortvals($bpath}
+
+    my $return_val = 0;
+    my $sort_type;
+    for(my $sv_counter = 0; ($sv_counter <= $#sort) && (! $return_val); $sv_counter++)
+    {
+	my ($s_order,$s_type) = split('',$sort[$sv_counter][1]);
+	if ($s_order && $s_type)
+	{
+	    #write_log("so:$s_order st:$s_type");
+	    if ($s_type eq 'n')
+	    {
+		if ($s_order eq 'a')
+		{
+		    $return_val = (get_eenv_handle($sort[$sv_counter][0], $key_a) <=> 
+				   get_eenv($sort[$sv_counter][0]));
+		}
+		else
+		{
+		    $return_val = (get_eenv($sort[$sv_counter][0]) <=> 
+				   get_eenv_handle($sort[$sv_counter][0], $key_a));
+		}
+	    }
+	    else
+	    {
+		if ($s_order eq 'a')
+		{
+		    $return_val = (lc(get_eenv_handle($sort[$sv_counter][0], $key_a)) cmp 
+				   lc(get_eenv($sort[$sv_counter][0])));
+		}
+		else
+		{
+		    $return_val = (lc(get_eenv($sort[$sv_counter][0])) cmp 
+				   lc(get_eenv_handle($sort[$sv_counter][0], $key_a)));
+		}
+	    }
+	}
+	else
+	{
+
+	    #
+	    # WriteError("st:.$sort_type.");
+	    # return zero because with no sort_type, all are equal?
+	    #
+	    $return_val = 0;
+	}
+        # 	if ($sort[$sv_counter][0] eq "page_break")
+        # 	{
+        # 	    my $key_b = get_eenv($sort[$sv_counter][0]);
+        # 	    my $ka_ref = $key_a;
+        # 	    my $kb_ref = get_ref_eenv();
+        # 	    write_log("nv:$newvar ka:$ka_ref kb:$kb_ref svc:$sv_counter sort:$sort[$sv_counter][0] a:$key_a->{$sort[$sv_counter][0]} b:$key_b r:$return_val");
+        # 	}
+    }
+    return $return_val;
+}
+
 
 1;

@@ -214,75 +214,81 @@ sub duc
 
 sub rerel
 {
-    # Needs some commentary.
-
+    # Needs some commentary. Since this is only called from life.deft, we might assume that it is
+    # purpose-specific code. It might do the equivalent of the following self_select():
+    
+    # self_select('state as neighbor, x_cord as x_n, y_cord as y_n',
+    #             'abs($x_n - $x_cord) < 2 && abs($y_n - $y_cord) < 2 && ($y_n != $y_cord || $x_n != $x_cord)');  
+    
     my @ttable;
     while(unwind_simple())
     {
-	push(@ttable, get_ref_eenv());
+        push(@ttable, get_ref_eenv());
     }
-
+    
     foreach my $ii (0..$#ttable)
     {
-	my $flag = 0;
-	set_ref_eenv($ttable[$ii]);
-	
-	# Set value of the non-declared rerelating columns
-	# for the expression evaluation. We need these columns
-	# when we eval the expression.
+        my $flag = 0;
+        set_ref_eenv($ttable[$ii]);
+        
+        # Set value of the non-declared rerelating columns
+        # for the expression evaluation. We need these columns
+        # when we eval the expression.
 
-	my $x_cord = get_eenv("x_cord");
-	my $y_cord = get_eenv("y_cord");
-
-	foreach my $jj (0..$#ttable)
-	{
-	    set_ref_eenv($ttable[$jj]);
-
-	    # Values of the declared rerelating columns. If the
-	    # expression is true, we carry these values to the $ii
-	    # row.
-
-	    my $x_n = get_eenv("x_n");
-	    my $y_n = get_eenv("y_n");
-	    my $neighbor = get_eenv("neighbor");
-
-	    # The expression is the clause of the if. For now assume
-	    # that expression must eval to a boolean. Must not change
-	    # the value of any columns.
-
-	    if (abs($x_n - $x_cord) < 2 &&
-		abs($y_n - $y_cord) < 2 &&
-		($y_n != $y_cord ||
-		 $x_n != $x_cord))
-	    {
-		set_ref_eenv($ttable[$ii]);
-		$flag = 1;
-
-		# Carry values from row $jj to row $ii.
-
-		set_eenv("x_n", $x_n);
-		set_eenv("y_n", $y_n);
-		set_eenv("neighbor", $neighbor);
-		
-		rewind_simple();
-	    }
-
-	}
-
-	if (! $flag)
-	{
-	    set_ref_eenv($ttable[$ii]);
-
-	    # No relationship, keep row, cols become null.  The
-	    # expression was false for all $jj rows tested against for
-	    # the current $ii row.
-
-	    set_eenv("x_n", "");
-	    set_eenv("y_n", "");
-	    set_eenv("neighbor", "");
-	    
-	    rewind_simple();
-	}
+        # This relies on two cols with fixed identities: x_cord, y_cord.
+        
+        my $x_cord = get_eenv("x_cord");
+        my $y_cord = get_eenv("y_cord");
+        
+        foreach my $jj (0..$#ttable)
+        {
+            set_ref_eenv($ttable[$jj]);
+            
+            # Values of the declared rerelating columns. If the
+            # expression is true, we carry these values to the $ii
+            # row.
+            
+            my $x_n = get_eenv("x_n");
+            my $y_n = get_eenv("y_n");
+            my $neighbor = get_eenv("neighbor");
+            
+            # The expression is the clause of the if. For now assume
+            # that expression must eval to a boolean. Must not change
+            # the value of any columns.
+            
+            if (abs($x_n - $x_cord) < 2 &&
+                abs($y_n - $y_cord) < 2 &&
+                ($y_n != $y_cord ||
+                 $x_n != $x_cord))
+            {
+                set_ref_eenv($ttable[$ii]);
+                $flag = 1;
+                
+                # Carry values from row $jj to row $ii.
+                
+                set_eenv("x_n", $x_n);
+                set_eenv("y_n", $y_n);
+                set_eenv("neighbor", $neighbor);
+                
+                rewind_simple();
+            }
+            
+        }
+        
+        if (! $flag)
+        {
+            set_ref_eenv($ttable[$ii]);
+            
+            # No relationship, keep row, cols become null.  The
+            # expression was false for all $jj rows tested against for
+            # the current $ii row.
+            
+            set_eenv("x_n", "");
+            set_eenv("y_n", "");
+            set_eenv("neighbor", "");
+            
+            rewind_simple();
+        }
     }
 }
 
@@ -1717,6 +1723,11 @@ my $ags_stop = 'push_multi();
 } # ags_stop
 join_multi();
 ';
+
+# From what I can tell by reading the Perl output from the compiler in content_manager/index.pl,
+# agg_simple(page_pk) will run the code block once for each unique value in page_pk. This might be viewed as a
+# sloppy shortcut to providing a unique key based on data, but it is easier. Or not. It is like doing a SQL
+# select distinct(), for example: select distinct(page_pk) from all_pages;
 
 sub gen_agg
 {
