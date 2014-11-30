@@ -85,9 +85,15 @@ sub unwind
     # $fref. This is probably both dangerous and powerful.
     my $fref = shift(@_);
     
-    our $row;
+    our $row = $#table;
 
-    for ($row=$#table; $row >= 0; $row--)
+    if ($row < 0)
+    {
+        $row = 0;
+    }
+    # for ($row=$#table; $row >= 0; $row--)
+    # Yes, the initializer is an empty statement
+    for (  ; $row >= 0; $row--)
     {
         $hr = $table[$row][$scope];
         {
@@ -138,9 +144,22 @@ sub unwind
 # an fsub.
 
 # read_tab_data("./demo.dat", 'sequence', 'make', 'model', 'displacement','units');
+# read_ws_data(...);
+
+sub read_ws_data
+{
+    return read_data('\s+', @_);
+}
+
 sub read_tab_data
 {
-    my $data_file = shift(@_); # first arg is data file $_[0]
+    return read_data('\t', @_);
+}
+
+sub read_data
+{
+    my $sep_regex = shift(@_); # first arg is a regex separator expression
+    my $data_file = shift(@_); # second arg is data file $_[0]
     my @va = @_; # remaining args are column names, va mnemonic for variables.
     
     my($temp);
@@ -166,6 +185,7 @@ sub read_tab_data
     {
         # Need to make a copy of the orig record for each input record. Either delete the orig or append one
         # of the input recs onto it.
+
         my $first = 1;
         while ($temp = <IN>)
         {
@@ -180,23 +200,27 @@ sub read_tab_data
                 $temp .= "\n";
             }
 
+            # Get all the fields before we start so the code below is cleaner, and we want all the line
+            # splitting regex to happen here so we can swap between tab-separated, whitespace-separated, and
+            # whatever.
+
+            my @fields;
+            while ($temp =~ s/^(.*?)(?:$sep_regex|\n)//smg)
+            {
+                push(@fields, $1);
+            }
+
             if (! $first)
             {
                 # Clone the current record, and push the clone onto the table. Since the record is cloned, we
                 # only need to deal with the hash keys, and not the $$vars. unwind() won't see these cloned
                 # records in this interation.
+
                 $new_hr = clone();
-                for (my $xx=0; $xx<=$#va && $temp; $xx++)
+                for (my $xx=0; $xx<=$#va; $xx++)
                 {
-                    if ($temp =~ s/(.*?)[\t\n]//)
-                    {
-                        no strict;
-                        $new_hr->{$va[$xx]} = $1;
-                    }
-                    else
-                    {
-                        $new_hr->{$va[$xx]} = '';
-                    }
+                    no strict;
+                    $new_hr->{$va[$xx]} = $fields[$xx];
                 }
             } 
             else
@@ -204,20 +228,13 @@ sub read_tab_data
                 # This is the actual current record, and unwind will assign the $$vars back to the hash,
                 # however that back-assignment is in a loop over the keys of the hash, so we have to add the
                 # hash keys and $$vars.
+
                 $first = 0;
-                for (my $xx=0; $xx<=$#va && $temp; $xx++)
+                for (my $xx=0; $xx<=$#va; $xx++)
                 {
-                    if ($temp =~ s/(.*?)[\t\n]//)
-                    {
-                        no strict;
-                        $new_hr->{$va[$xx]} = $1;
-                        ${$va[$xx]} = $1;
-                    }
-                    else
-                    {
-                        $new_hr->{$va[$xx]} = '';
-                        ${$va[$xx]} = '';
-                    }
+                    no strict;
+                    $new_hr->{$va[$xx]} = $fields[$xx];
+                    ${$va[$xx]} = $fields[$xx];
                 }
             }
         }
@@ -242,6 +259,11 @@ sub get_ref_eenv
 sub get_eenv
 {
     return $hr->{$_[0]};
+}
+
+sub set_eenv
+{
+    $hr->{$_[0]} = $_[1];
 }
 
 sub slice_eenv
@@ -504,6 +526,97 @@ sub keycmp
         # 	}
     }
     return $return_val;
+}
+
+
+# sep 25 2008 fix to keep the eenv and xmult stream with table. Bug
+# was that existing cols disappeared.
+
+# Updated 2006-11-09
+# Simple sub to read whitespace separated data and rewind.
+# Ignores empty lines. Ignores comments. Used to read in the state table, for example states.dat
+
+# read_ws_data("states.dat", "_d_order,_d_edge,_d_test,_d_func,_d_next");
+
+# 0       page_search     $edit     null()          edit_page
+# 1       page_search     $delete   null()          ask_delete_page
+# 2       page_search     $insert   null()          edit_new_page
+# 3       page_search     $item     null()          item_search
+# 4       page_search     $site_gen site_gen()      next
+# 5       page_search     $true     page_search()   wait
+# 0       ask_del_page    $confirm  delete_page()   page_search
+# 1       ask_del_page    $true     ask_del_page()  wait
+
+# dec 29 2006 Change @va to use var args.
+
+# See read_data() and the wrapper sub read_wd_data(). Same args, new code.
+sub old_read_ws_data
+{
+    my $data_file = shift(@_); # yank off $_[0]
+    my @va = @_;
+
+    my($temp);
+    my @fields;
+
+    # Crossmultiply incoming stream with new input.
+    # In other words, read the input file one time for each
+    # incoming file. Take each line of the incoming file
+    # and cross with the current record.
+
+    my $log_flag = 0;
+    my $run_once = 1;
+    # my %urh;
+    # while(unwind(\%urh) || $run_once)
+
+    my $fref = sub
+    {
+	my $orig_eenv = get_ref_eenv();
+
+	if (! open(RWD_IN, "< $data_file"))
+	{
+	    if (! $log_flag)
+	    {
+		write_log("Error: Can't open $data_file for reading");
+		$log_flag = 1;
+	    }
+	    # Simply exiting here leaves all the downstream ancestors
+	    # hanging around. rewind, don't exit.
+	}
+	else
+	{
+	    # Skip blank lines and comments.
+	    # This doesn't have a convention for empty fields.
+	    # Unlike read_tab_data() where nothing between tabs is 
+	    # an empty field.
+	    
+	    while($temp = <RWD_IN>)
+	    {
+		set_ref_eenv($orig_eenv);
+		if (! $temp || $temp =~ m/^\#/)
+		{
+		    next;
+		}
+		
+		if ($temp !~ m/\n$/)
+		{
+		    $temp .= "\n";
+		}
+		
+		# The simple regex below require the terminal \n
+		# that we've added above.
+		# See read_tab_data() for more notes.
+		
+		for(my $xx=0; $xx<=$#va && $temp; $xx++)
+		{
+		    $temp =~ s/(.*?)\s+//;
+		    set_eenv($va[$xx], $1);
+		}
+		# rewind(\%urh);
+	    }
+	    close(RWD_IN);
+	}
+    };
+    unwind($fref);
 }
 
 
