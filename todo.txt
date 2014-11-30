@@ -13,6 +13,8 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
+- + try_states.pl continue porting call_state() and test_edges()
+
 - nov 19 2014 Noah suggests predicate column create paired with an aggregating block that takes the column and
   runs all rows for true values in the control column. Predicate controls are unlike if-else which require the
   compiler to emit code in the order of the original if, and requires joining streams. 
