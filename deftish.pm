@@ -24,7 +24,7 @@ $VERSION = '1';
 # haven't been unwound. It's clever.
 
 my @table;
-my $rowc = 0;
+my $rowc; # Set in unwind()
 my $hr;
 
 # What is scope? Only for subroutines? (Apparently only for subs since it isn't used in the demo.)
@@ -79,22 +79,29 @@ sub newc
 }
 
 
+
+
 sub unwind
 {
     # The first arg must be a function ref, and we'll shift it off so we can pass the rest of the arg list to
     # $fref. This is probably both dangerous and powerful.
     my $fref = shift(@_);
     
-    our $row = $#table;
+    # Make $row local to unwind() so that recursion works. 
+
+    my $row = $#table;
 
     if ($row < 0)
     {
         $row = 0;
+        $table[$row][$scope] = {} ;
     }
     # for ($row=$#table; $row >= 0; $row--)
     # Yes, the initializer is an empty statement
     for (  ; $row >= 0; $row--)
     {
+        # Update the global so clone() knows which row to use.
+        $rowc = $row;
         $hr = $table[$row][$scope];
         {
             no strict;
@@ -617,6 +624,46 @@ sub old_read_ws_data
 	}
     };
     unwind($fref);
+}
+
+
+my %_d_code_refs;
+
+sub dispatch
+{
+    # Too bad I didn't leave myself a little more detail about why this is so bad.
+    # die "don't use this\n";
+    my $var = $_[0];
+
+    print "dispatch: $var\nPresss return to continue...";
+    my $var = <>;
+    return;
+
+    my %urh;
+    while(unwind(\%urh))
+    {
+	my $sub_name = get_eenv($var);
+
+	# Noah really wants to restrict this regex to things
+	# that are valid subroutine calls.
+	
+	$sub_name =~ s/&?([\w\d]+)(?:\(\))?/$1/;
+	if (exists($_d_code_refs{$sub_name}))
+	{
+	    &{$_d_code_refs{$sub_name}};
+	}
+	else
+	{
+	    write_log("Error: dispatch, no Deft sub $sub_name \"$_d_code_refs{$sub_name}\"");
+	    my $out = "Error: dispatch, var:$_[0] has no Deft sub:$sub_name \"$_d_code_refs{$sub_name}\"\n";
+	    foreach my $key (keys(%_d_code_refs))
+	    {
+		$out .= "$key\n";
+	    }
+	    die "$out\n";
+	}
+	rewind(\%urh);
+    }
 }
 
 

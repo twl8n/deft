@@ -15,6 +15,8 @@ main();
 
 sub main
 {
+    $| = 0;
+
     # init();
 
     my $dump = sub
@@ -26,27 +28,39 @@ sub main
     my $fref = sub
     { 
         no strict;
-        newc('_d_state');
-    };
-    unwind($fref);
-
-    $fref = sub
-    { 
-        no strict;
+        newc('_d_state', 'next_state', '_d_result', 'test_counter');
         $_d_state = "page_search";
-        read_ws_data("states.dat", '_d_order', '_d_edge','_d_test', '_d_func', '_d_next');
     };
     unwind($fref);
-    unwind($dump);
 
-    exit();
+    # In the real code, read_ws_data() is only called in test_edges(). Calling it here is only for debugging.
 
+    # $fref = sub
+    # { 
+    #     no strict;
+    #     $_d_state = "page_search";
+    #     read_ws_data("states.dat", '_d_order', '_d_edge','_d_test', '_d_func', '_d_next');
+    # };
+    # unwind($fref);
+
+    # unwind($dump);
 
     my $clear_cont = sub
     {
         no strict;
         $continue = 0;
     };
+
+    # This was in test_edges() but loading it every time test_edges() recurses was crossmultiplying. I think
+    # the original Deft code was doing this in a new scope of the table, and thus this data was lost when that scope closed.
+
+    my $fref = sub
+    {
+        read_ws_data("states.dat", '_d_order', '_d_edge', '_d_test', '_d_func', '_d_next');
+    };
+    unwind($fref);
+
+
 
     # Must name our current state $_d_state
     # deft_cgi();
@@ -63,7 +77,6 @@ sub main
 
 sub call_state
 {
-
     my $fref = sub
     {
         no strict;
@@ -73,7 +86,7 @@ sub call_state
     unwind($fref);
 
     test_edges();
-    #write_log("next_state1: $next_state");
+    # print("next_state1: $next_state");
 
     $fref = sub
     {
@@ -82,13 +95,14 @@ sub call_state
         {
             $_prev_state = $_d_state;
             $_d_state = $next_state;
-            #write_log("next_state2: $next_state");
+            print("next_state2: $next_state");
             if (! $_d_state)
             {
-                write_log("_d_state undefined. prev: $_prev_state");
+                print("_d_state undefined. prev: $_prev_state\n");
+                print Dumper(hr());
                 exit(1);
             }
-            # Fix this. Can't have a perl call in unwind sub.
+            # Fix this. Can't have a perl call in unwind sub. Or can we? 
             call_state();
         }
     };
@@ -117,23 +131,25 @@ sub call_state
 
 sub test_edges
 {
-    
-    my $fref = sub
-    {
-        read_ws_data("states.dat", "_d_order,_d_edge,_d_test,_d_func,_d_next");
-    };
-    unwind($fref);
 
     # throw out comments
     # keep_row('($temp  !~ m/^#/)');
 
-    $fref = sub
+    # Need to either throw out everything we don't want, or somehow restrict all the unwind calls below to
+    # just a few rows. The recursion test at the end depends on only a small number of rows. 
+
+    # keep_row('($_d_order == $test_counter) && ($_d_edge eq $_d_state)');
+
+    my $fref = sub
     {
         no strict;
+        # print Dumper(hr());
+        print "tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
         if (($_d_order == $test_counter) && ($_d_edge eq $_d_state))
         {
             $_d_test =~ s/\$//;
-        
+            
+            print "_d_test: $_d_test\n";
             if ($_d_test eq "true" || get_eenv($_d_test))
             {
                 $_d_result = 1;
@@ -148,6 +164,12 @@ sub test_edges
 
     $fref = sub
     {
+        print "hr: " . Dumper(hr());
+    };
+    # unwind($fref);
+
+    $fref = sub
+    {
         no strict;
         if ( $_d_result ) 
         {
@@ -157,11 +179,11 @@ sub test_edges
         
             if ($_d_func !~ m/null/)
             {
-                #write_log("dispatching:$_d_func _d_next:$_d_next");
+                #print("dispatching:$_d_func _d_next:$_d_next");
                 dispatch("_d_func");
             }
             $next_state = $_d_next;
-            #write_log("ns:$next_state _d_next:$_d_next");
+            print("ns:$next_state _d_next:$_d_next");
         }
     };
     unwind($fref);
@@ -169,10 +191,15 @@ sub test_edges
     $fref = sub
     {
         no strict;
-        if ((!$_d_result) || ($next_state eq 'next'))
+        if (($_d_order == $test_counter) && ($_d_edge eq $_d_state))
         {
-            $test_counter++;
-            test_edges();
+            if ((!$_d_result) || ($next_state eq 'next'))
+            {
+                $test_counter++;
+                # Must set_eenv() or invent a rewind because the $$var won't be written back to the table until after $fref is complete.
+                set_eenv('test_counter', $test_counter);
+                test_edges();
+            }
         }
     };
     unwind($fref);
