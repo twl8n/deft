@@ -15,7 +15,7 @@ main();
 
 sub main
 {
-    $| = 0;
+    $| = 1;
 
     # init();
 
@@ -28,8 +28,11 @@ sub main
     my $fref = sub
     { 
         no strict;
-        newc('_d_state', 'next_state', '_d_result', 'test_counter');
-        $_d_state = "page_search";
+        newc('_d_state', 'next_state', '_d_result', 'test_counter', 'edit', 'save');
+        # $_d_state = "page_search";
+        # $edit = 1;
+        $_d_state = "edit_page";
+        $save = 1;
     };
     unwind($fref);
 
@@ -140,30 +143,37 @@ sub test_edges
 
     # keep_row('($_d_order == $test_counter) && ($_d_edge eq $_d_state)');
 
+    print "te starts\n";
+
     my $fref = sub
     {
         no strict;
         # print Dumper(hr());
-        print "tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
+        # print "tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
         if (($_d_order == $test_counter) && ($_d_edge eq $_d_state))
         {
             $_d_test =~ s/\$//;
-            
-            print "_d_test: $_d_test\n";
+            # print "_d_test: $_d_test\n";
             if ($_d_test eq "true" || get_eenv($_d_test))
             {
+                print "result set to true\n";
                 $_d_result = 1;
             } else
             {
                 $_d_result = 0;
             }
         }
-        $_d_result = 0;
+        else
+        {
+            $_d_result = 0;
+        }
     };
     unwind($fref);
 
-    $fref = sub
+    my $dump = sub
     {
+        no strict;
+        print "rowc: " . rowc() . "\n";
         print "hr: " . Dumper(hr());
     };
     # unwind($fref);
@@ -183,7 +193,7 @@ sub test_edges
                 dispatch("_d_func");
             }
             $next_state = $_d_next;
-            print("ns:$next_state _d_next:$_d_next");
+            print("ns:$next_state _d_next:$_d_next\n");
         }
     };
     unwind($fref);
@@ -191,18 +201,33 @@ sub test_edges
     $fref = sub
     {
         no strict;
-        if (($_d_order == $test_counter) && ($_d_edge eq $_d_state))
+
+        # if (($_d_order == $test_counter) && ($_d_edge eq $_d_state))
+
+        # I think we want to increment test_counter for all the states with matching edges. If our state is
+        # 'page_search' then we want all the edges with 'page_search' to test $_d_order against the
+        # incremented test_counter, and that means they all need to be incremented.
+
+        if ($_d_edge eq $_d_state)
         {
             if ((!$_d_result) || ($next_state eq 'next'))
             {
                 $test_counter++;
                 # Must set_eenv() or invent a rewind because the $$var won't be written back to the table until after $fref is complete.
                 set_eenv('test_counter', $test_counter);
-                test_edges();
+                print "tc: $test_counter\n";
             }
         }
     };
     unwind($fref);
+
+    # unwind($dump);
+
+    # In deft5 where this works, test_edges() is inside the if() statement, but only in the sense of stream
+    # management. The call to test_edges() is *not* inside the same unwind block as $test_counter++.
+    
+    test_edges();
+
 }
 
 

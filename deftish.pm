@@ -48,6 +48,11 @@ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
 # The Clone module works with our lists of lists and may be faster than Storable.
 # use Clone qw(clone);
 
+sub rowc
+{
+    return $rowc;
+}
+
 sub hr
 {
     return $hr;
@@ -635,7 +640,7 @@ sub dispatch
     # die "don't use this\n";
     my $var = $_[0];
 
-    print "dispatch: $var\nPresss return to continue...";
+    print "dispatch: " . get_eenv($var) . "\nPresss return to continue...";
     my $var = <>;
     return;
 
