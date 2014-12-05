@@ -98,18 +98,18 @@ sub call_state
         {
             $_prev_state = $_d_state;
             $_d_state = $next_state;
-            print("next_state2: $next_state");
+            print("next_state2: $next_state\n");
             if (! $_d_state)
             {
                 print("_d_state undefined. prev: $_prev_state\n");
                 print Dumper(hr());
                 exit(1);
             }
-            # Fix this. Can't have a perl call in unwind sub. Or can we? 
-            call_state();
         }
     };
     unwind($fref);
+    # Fix this. Can't have a perl call in unwind sub. Or can we? 
+    call_state();
 };
 
 
@@ -134,7 +134,8 @@ sub call_state
 
 sub test_edges
 {
-
+    my $return_flag = 0;
+    my $return_state = '';
     # throw out comments
     # keep_row('($temp  !~ m/^#/)');
 
@@ -149,7 +150,7 @@ sub test_edges
     {
         no strict;
         # print Dumper(hr());
-        # print "tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
+        print "tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
         if (($_d_order == $test_counter) && ($_d_edge eq $_d_state))
         {
             $_d_test =~ s/\$//;
@@ -193,10 +194,29 @@ sub test_edges
                 dispatch("_d_func");
             }
             $next_state = $_d_next;
+            $return_state = $_d_next;
             print("ns:$next_state _d_next:$_d_next\n");
+            $return_flag = 1;
+            # It seem wrong and unsafe to return from inside an unwind, and this didn't work. I guess it was
+            # returning only from unwind and not from test_edges.
+            # return;
         }
     };
     unwind($fref);
+
+    if ($return_flag)
+    {
+        $fref = sub
+        {
+            no strict;
+            $next_state = $return_state;
+            $test_counter = 0;
+        };
+        unwind($fref);
+        print "ret ns: $return_state\n";
+        return;
+    }
+
 
     $fref = sub
     {
