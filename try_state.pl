@@ -80,6 +80,7 @@ sub main
 
 sub call_state
 {
+    my $return_flag = 0;
     my $fref = sub
     {
         no strict;
@@ -98,7 +99,7 @@ sub call_state
         {
             $_prev_state = $_d_state;
             $_d_state = $next_state;
-            print("next_state2: $next_state\n");
+            # print("cs next_state2: $next_state\n");
             if (! $_d_state)
             {
                 print("_d_state undefined. prev: $_prev_state\n");
@@ -106,8 +107,16 @@ sub call_state
                 exit(1);
             }
         }
+        elsif ($next_state eq 'wait')
+        {
+            $return_flag = 1;
+        }
     };
     unwind($fref);
+    if ($return_flag)
+    {
+        return;
+    }
     # Fix this. Can't have a perl call in unwind sub. Or can we? 
     call_state();
 };
@@ -150,11 +159,11 @@ sub test_edges
     {
         no strict;
         # print Dumper(hr());
-        print "tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
+        # print "tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
         if (($_d_order == $test_counter) && ($_d_edge eq $_d_state))
         {
             $_d_test =~ s/\$//;
-            # print "_d_test: $_d_test\n";
+            print "_d_test: $_d_test tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
             if ($_d_test eq "true" || get_eenv($_d_test))
             {
                 print "result set to true\n";
@@ -235,7 +244,7 @@ sub test_edges
                 $test_counter++;
                 # Must set_eenv() or invent a rewind because the $$var won't be written back to the table until after $fref is complete.
                 set_eenv('test_counter', $test_counter);
-                print "tc: $test_counter\n";
+                # print "tc: $test_counter\n";
             }
         }
     };
