@@ -153,8 +153,6 @@ sub test_edges
 
     # keep_row('($_d_order == $test_counter) && ($_d_edge eq $_d_state)');
 
-    print "te starts\n";
-
     my $fref = sub
     {
         no strict;
@@ -163,12 +161,13 @@ sub test_edges
         if (($_d_order == $test_counter) && ($_d_edge eq $_d_state))
         {
             $_d_test =~ s/\$//;
-            print "_d_test: $_d_test tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
             if ($_d_test eq "true" || get_eenv($_d_test))
             {
-                print "result set to true\n";
+                # print "_d_test: $_d_test tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
+                print "_d_test: $_d_test get_eenv($_d_test): " . get_eenv($_d_test) . "\n";
                 $_d_result = 1;
-            } else
+            }
+            else
             {
                 $_d_result = 0;
             }
