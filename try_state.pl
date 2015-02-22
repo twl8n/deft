@@ -25,28 +25,13 @@ sub main
         print Dumper(hr());
     };
 
+    # Create a few cols we need.
     my $fref = sub
     { 
         no strict;
-        newc('_d_state', 'next_state', '_d_result', 'test_counter', 'edit', 'save');
-        # $_d_state = "page_search";
-        # $edit = 1;
-        $_d_state = "edit_page";
-        $save = 1;
+        newc('_d_state', 'next_state', '_d_result', 'test_counter');
     };
     unwind($fref);
-
-    # In the real code, read_ws_data() is only called in test_edges(). Calling it here is only for debugging.
-
-    # $fref = sub
-    # { 
-    #     no strict;
-    #     $_d_state = "page_search";
-    #     read_ws_data("states.dat", '_d_order', '_d_edge','_d_test', '_d_func', '_d_next');
-    # };
-    # unwind($fref);
-
-    # unwind($dump);
 
     my $clear_cont = sub
     {
@@ -57,18 +42,61 @@ sub main
     # This was in test_edges() but loading it every time test_edges() recurses was crossmultiplying. I think
     # the original Deft code was doing this in a new scope of the table, and thus this data was lost when that scope closed.
 
+    # _d_order _d_edge        _d_test   _d_func         _d_next
+    # 0       page_search     $edit     null()          edit_page
+    # 1       page_search     $delete   null()          ask_delete_page
+
     my $fref = sub
     {
         read_ws_data("states.dat", '_d_order', '_d_edge', '_d_test', '_d_func', '_d_next');
     };
     unwind($fref);
 
+    
+    # Auto create a col for each unique test. $true is true, the rest default to false.
+    my $fref = sub
+    {
+        no strict;
+        if (! exists($known{$_d_test}))
+        {
+            $known{$_d_test} = 1;
+            newc($_d_test);
+            if ($_d_test eq 'true')
+            {
+                set_eenv($_d_test, 1);
+            }
+            else
+            {
+                set_eenv($_d_test, 0);
+            }
+        }
+    };
+    unwind($fref);
+
+    # Set defaults
+    my $fref = sub
+    { 
+        no strict;
+        $_d_state = "page_search";
+        $edit = 1;
+        # $_d_state = "edit_page";
+        # $save = 1;
+    };
+    unwind($fref);
 
 
-    # Must name our current state $_d_state
+    my $fref = sub
+    {
+        no strict;
+        if ($_d_edge eq $true)
+        {
+            print "";
+        }
+    };
+    # unwind($fref);
+
+
     # deft_cgi();
-    # States are read in each time we test one. See read_ws_data() in
-    # test_edges().
 
     call_state();
 
@@ -99,7 +127,6 @@ sub call_state
         {
             $_prev_state = $_d_state;
             $_d_state = $next_state;
-            # print("cs next_state2: $next_state\n");
             if (! $_d_state)
             {
                 print("_d_state undefined. prev: $_prev_state\n");
@@ -198,16 +225,16 @@ sub test_edges
         
             if ($_d_func !~ m/null/)
             {
+                # Press return...
                 #print("dispatching:$_d_func _d_next:$_d_next");
                 dispatch("_d_func");
             }
             $next_state = $_d_next;
             $return_state = $_d_next;
-            print("ns:$next_state _d_next:$_d_next\n");
+            print("ns:$next_state _d_next:$_d_next _d_state:$_d_state\n");
             $return_flag = 1;
-            # It seem wrong and unsafe to return from inside an unwind, and this didn't work. I guess it was
-            # returning only from unwind and not from test_edges.
-            # return;
+            # It seems wrong and unsafe to return from inside an unwind, and returning here didn't work. I
+            # guess it was returning only from unwind and not from test_edges.
         }
     };
     unwind($fref);
@@ -251,11 +278,9 @@ sub test_edges
 
     # unwind($dump);
 
-    # In deft5 where this works, test_edges() is inside the if() statement, but only in the sense of stream
-    # management. The call to test_edges() is *not* inside the same unwind block as $test_counter++.
+    # In deft5 where this works, test_edges() is inside the if() statement, but only "inside" in the sense of
+    # stream management. The call to test_edges() is *not* inside the same unwind block as $test_counter++.
     
     test_edges();
 
 }
-
-

@@ -13,7 +13,15 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
-- Why doesn't try_states.pl transition from page_search to wait?
+- + convert try_state.pl to keyboard interactive state machine test bed.
+
+- + try_state.pl: try auto creating a column for each possible test var, and setting them all to zero except $true which is always 1.
+
+- ? try_state.pl: test_edges() _d_test needs to be tested against a var that can contain several true states. The old method
+  of using $edit, $save, $true requires a column for each of those which might be fine, but it seems better to
+  create a new row. (Why is creating a new row better? Seems worse albeit more loopable.)
+
+- x (Fixed, but how?) Why doesn't try_states.pl transition from page_search to wait?
 
 - x try_states.pl continue porting call_state() and test_edges()
 

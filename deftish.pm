@@ -640,8 +640,9 @@ sub dispatch
     # die "don't use this\n";
     my $var = $_[0];
 
-    print "dispatch: " . get_eenv($var) . "\nPresss return to continue...";
-    my $var = <>;
+    print "dispatch: " . get_eenv($var) . "\n";
+    # print "\nPress return to continue...";
+    # my $var = <>;
     return;
 
     my %urh;

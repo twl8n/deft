@@ -1,3 +1,16 @@
+    # In the real code, read_ws_data() is only called in test_edges(). Calling it here is only for debugging.
+
+    # $fref = sub
+    # { 
+    #     no strict;
+    #     $_d_state = "page_search";
+    #     read_ws_data("states.dat", '_d_order', '_d_edge','_d_test', '_d_func', '_d_next');
+    # };
+    # unwind($fref);
+
+    # unwind($dump);
+
+
 # Apr 06 2007 removed.
 sub if_col
 {
