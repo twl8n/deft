@@ -47,6 +47,7 @@ sub main
 
     unwind(sub
            {
+               no strict;
                read_ws_data("states.dat", '_d_order', '_d_edge', '_d_test', '_d_func', '_d_next');
            });
     
@@ -54,18 +55,19 @@ sub main
     unwind(sub
            {
                no strict;
+               $_d_test =~ s/^\$//;
                if (! exists($known{$_d_test}))
                {
                    $known{$_d_test} = 1;
                    newc($_d_test);
-                   if ($_d_test eq 'true')
-                   {
-                       set_eenv($_d_test, 1);
-                   }
-                   else
-                   {
-                       set_eenv($_d_test, 0);
-                   }
+               }
+               if ($_d_test eq 'true')
+               {
+                   set_eenv($_d_test, 1);
+               }
+               else
+               {
+                   set_eenv($_d_test, 0);
                }
            });
 
@@ -74,7 +76,7 @@ sub main
            { 
                no strict;
                $_d_state = "page_search";
-               $edit = 1;
+               # $edit = 1;
                # $_d_state = "edit_page";
                # $save = 1;
            });
@@ -89,19 +91,50 @@ sub main
     };
     # unwind($fref);
 
+    while(1)
+    {
+        call_state();
 
-    # deft_cgi();
-
-    call_state();
-
-    unwind(sub
-           {
-               no strict;
-               if ($_d_edge eq $_d_state)
+        # Reset all tests to false, except true which is always true.
+        unwind(sub
                {
-                   print "Action:  $_d_order $_d_test\n";
-               }
-           })
+                   no strict;
+                   if ($_d_test eq 'true')
+                   {
+                       set_eenv($_d_test, 1);
+                   }
+                   else
+                   {
+                       set_eenv($_d_test, 0);
+                   }
+               });
+
+        unwind(sub
+               {
+                   no strict;
+                   if ($_d_edge eq $_d_state)
+                   {
+                       print "Action:  $_d_order $_d_test\n";
+                   }
+               });
+
+        print "\nChoose one:";
+        my $var = <>;
+
+        unwind(sub
+               {
+                   no strict;
+                   if ($_d_order == $var && $_d_edge eq $_d_state)
+                   {
+                       # Instead of $$_d_test (dollar dollar sigil) must use set_eenv() and $_d_test.
+                       # Whatever test is in $_d_test needs to be set to true. If $_d_test == 'edit' then
+                       # $edit=1 or set_eenv('edit', 1);
+                       print "Setting col $_d_test to 1\n";
+                       $$_d_test = 1;
+                       # set_eenv($_d_test, 1);
+                   }
+               });
+    }    
 
     # While perhaps not the standard meanings, to avoid confusion,
     # we use these definitions:
@@ -134,6 +167,10 @@ sub call_state
                        print("_d_state undefined. prev: $_prev_state\n");
                        print Dumper(hr());
                        exit(1);
+                   }
+                   if ($next_state ne 'next')
+                   {
+                       $return_flag = 1;
                    }
                }
                elsif ($next_state eq 'wait')
@@ -186,14 +223,17 @@ sub test_edges
            {
                no strict;
                # print Dumper(hr());
-               # print "tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
+               #print "tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
                if (($_d_order == $test_counter) && ($_d_edge eq $_d_state))
                {
-                   $_d_test =~ s/\$//;
+                   print "M-3: _d_test: $_d_test eenv($_d_test): " . get_eenv($_d_test) . " tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
+
+                   $_d_test =~ s/^\$//;
                    if ($_d_test eq "true" || get_eenv($_d_test))
                    {
                        # print "_d_test: $_d_test tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
-                       print "_d_test: $_d_test get_eenv($_d_test): " . get_eenv($_d_test) . "\n";
+                       print "M-1: _d_test: $_d_test get_eenv($_d_test): " . get_eenv($_d_test) . "\n";
+                       print "M-1: tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
                        $_d_result = 1;
                    }
                    else
@@ -265,12 +305,12 @@ sub test_edges
                    if ((!$_d_result) || ($next_state eq 'next'))
                    {
                        $test_counter++;
-                       # (Why do we care when $test_counter is written back to the table? Debugging?) 
+                       # Normally, this is where we would use $$test_counter (note the 2 '$' chars).
 
-                       # Comment: Must set_eenv() or invent a rewind because the $$var won't be written back
+                       # Must set_eenv() or invent a rewind because the $$var won't be written back
                        # to the table until after $fref has completed each iteration.
                        set_eenv('test_counter', $test_counter);
-                       # print "tc: $test_counter\n";
+                       # print "M-2: tc: $test_counter\n";
                    }
                }
            });
