@@ -83,9 +83,6 @@ sub newc
     }
 }
 
-
-
-
 sub unwind
 {
     # The first arg must be a function ref, and we'll shift it off so we can pass the rest of the arg list to
