@@ -27,6 +27,7 @@ my @table;
 my $rowc; # Set in unwind()
 my $hr;
 
+# Scope is disabled because I can't figure out how to copy/overwrite a level of scope in keep().
 # What is scope? Only for subroutines? (Apparently only for subs since it isn't used in the demo.)
 my $scope = 0;
 
@@ -64,15 +65,19 @@ sub init
     # subroutine stack depth.  Streams have become meaningless, since any column could be a predicate, but
     # we'll go with a default column _stream for now. Everything about Deft assumes at least 1 row, but makes
     # no assumptions about existence of any columns.
-    $table[0][$scope] = {_stream => ''};
+
+    # $table[0][$scope] = {_stream => ''};
+    # $table[0][$scope] = {};
+    $table[0] = {};
 }
 
 # I guess $rowc is a global. Should this be inside unwind()?
 sub clone
 {
-    my $newr = dclone(\@{$table[$rowc]});
+    my $newr = dclone(\%{$table[$rowc]});
     push(@table, $newr);
-    return \%{$table[$#table][$scope]};
+    # return \%{$table[$#table][$scope]};
+    return \%{$table[$#table]};
 }
 
 sub newc
@@ -82,6 +87,103 @@ sub newc
         $hr->{$newcol} = '';
     }
 }
+
+sub keep
+{
+    # The first arg must be a function ref, and we'll shift it off so we can pass the rest of the arg list to
+    # $fref. This is probably both dangerous and powerful.
+    my $fref = shift(@_);
+    
+    my @new;
+
+    # Make $row local to unwind() so that recursion works. 
+    my $row = $#table;
+
+    if ($row < 0)
+    {
+        $row = 0;
+        # $table[$row][$scope] = {} ;
+        $table[$row] = {} ;
+    }
+    # Yes, the initializer is an empty statement
+    for (  ; $row >= 0; $row--)
+    {
+        $rowc = $row;
+        # $hr = $table[$row][$scope];
+        $hr = $table[$row];
+        {
+            # If we use $::var here and our $var back in main, then there are no issues with strict refs or
+            # use strict. To do that we need to use eval() instead of $$key.
+
+            foreach my $key (keys(%{$hr}))
+            {
+                # We could undef $hr->{$key} so that we can later detect use of set_eenv() in &$fref().
+                # $$key = $hr->{$key};
+                eval("\$::$key = \$hr->{$key};");
+            }
+            # If &$fref() then keep by pushing onto the new table.
+            my $test = &$fref(@_);
+            # print "test: $test $::_d_order == $::test_counter && $::_d_edge eq $::_d_state\n";
+            if ($test)
+            {
+                push(@new, $hr);
+            }
+        }
+    }
+    if (scalar(@new))
+    {
+        @table = @new;
+    }
+}
+
+sub delete
+{
+    # The first arg must be a function ref, and we'll shift it off so we can pass the rest of the arg list to
+    # $fref. This is probably both dangerous and powerful.
+    my $fref = shift(@_);
+    
+    # Make $row local to unwind() so that recursion works. 
+
+    my $row = $#table;
+
+    if ($row < 0)
+    {
+        $row = 0;
+        # $table[$row][$scope] = {} ;
+        $table[$row] = {} ;
+    }
+    # for ($row=$#table; $row >= 0; $row--)
+    # Yes, the initializer is an empty statement
+    for (  ; $row >= 0; $row--)
+    {
+        # Update the global so clone() knows which row to use.
+        $rowc = $row;
+        # $hr = $table[$row][$scope];
+        $hr = $table[$row];
+        {
+            # no strict;
+
+            # If we use $::var here and our $var back in main, then there are no issues with strict refs or
+            # use strict. To do that we need to use eval() instead of $$key.
+
+            foreach my $key (keys(%{$hr}))
+            {
+                # We could undef $hr->{$key} so that we can later detect use of set_eenv() in &$fref().
+                # $$key = $hr->{$key};
+                eval("\$::$key = \$hr->{$key};");
+            }
+            # If &$fref() then do not rewind, which is delete.
+            if (! &$fref(@_))
+            {
+                foreach my $key (keys(%{$hr}))
+                {
+                    eval("\$hr->{$key} = \$::$key;");
+                }
+            }
+        }
+    }
+}
+
 
 sub unwind
 {
@@ -96,7 +198,8 @@ sub unwind
     if ($row < 0)
     {
         $row = 0;
-        $table[$row][$scope] = {} ;
+        # $table[$row][$scope] = {} ;
+        $table[$row] = {} ;
     }
     # for ($row=$#table; $row >= 0; $row--)
     # Yes, the initializer is an empty statement
@@ -104,18 +207,27 @@ sub unwind
     {
         # Update the global so clone() knows which row to use.
         $rowc = $row;
-        $hr = $table[$row][$scope];
+        # $hr = $table[$row][$scope];
+        $hr = $table[$row];
         {
-            no strict;
+            # no strict;
+
+            # If we use $::var here and our $var back in main, then there are no issues with strict refs or
+            # use strict. To do that we need to use eval() instead of $$key.
+
             foreach my $key (keys(%{$hr}))
             {
-                $$key = $hr->{$key};
+                # We could undef $hr->{$key} so that we can later detect use of set_eenv() in &$fref().
+                # $$key = $hr->{$key};
+                eval("\$::$key = \$hr->{$key};");
             }
             &$fref(@_);
             # Where are duplicate records eliminated? 
             foreach my $key (keys(%{$hr}))
             {
-                $hr->{$key} = $$key;
+                # Here we could check is defined($hr->{$key}) as a way to detect use of set_eenv() in &$fref().
+                # $hr->{$key} = $$key;
+                eval("\$hr->{$key} = \$::$key;");
             }
         }
     }

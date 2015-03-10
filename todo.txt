@@ -13,6 +13,32 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
+- remove all states except current state, after each pass read
+  state table again. Can't keep state table because multi-true
+  state booleans would make the state boolean aggregation
+  operation impossible (very messy?).
+
+- (No, need to aggreate, and really need to read the state table again.) Need to set all test cols at once, not just $$_d_test which
+  sets only the test of this record, but not the other tests.
+
+- + state next not working, missing code in main to handle next. Maybe call_state() should not return.
+
+- + code inside if ( $_d_result )  will not effect other all rows.
+
+;; http://www.emacswiki.org/emacs/UnfillParagraph
+
+;;; Stefan Monnier <foo at acm.org>. It is the opposite of fill-paragraph    
+(defun unfill-paragraph (&optional region)
+  "Takes a multi-line paragraph and makes it into a single line of text."
+  (interactive (progn (barf-if-buffer-read-only) '(t)))
+  (let ((fill-column (point-max)))
+    (fill-paragraph nil region)))
+unfill-paragraph
+
+- decorators in Perl 5? Perl 6? Elisp?
+
+http://www.perlmonks.org/?node_id=1035650
+
 - + convert try_state.pl to keyboard interactive state machine test bed.
 
 - + try_state.pl: try auto creating a column for each possible test var, and setting them all to zero except $true which is always 1.

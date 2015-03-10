@@ -11,6 +11,10 @@ require 'deftish.pm';
 
 # require "cmlib.deft";
 
+our ($_d_state, $next_state, $_d_result, $test_counter);
+our (%known, $_prev_state, $_d_order, $_d_edge, $_d_test, $_d_func, $_d_next);
+our ($next, $edit, $delete, $insert, $item, $site_gen, $confirm, $save, $continue, $page_gen, $auto_gen, $con_pk, $true);
+
 main();
 
 sub main
@@ -19,6 +23,7 @@ sub main
 
     # init();
 
+
     my $dump = sub
     {
         no strict;
@@ -26,14 +31,11 @@ sub main
     };
 
     # Create a few cols we need.
-    unwind(sub
-           { 
-               no strict;
+    unwind(sub { 
                newc('_d_state', 'next_state', '_d_result', 'test_counter');
            });
 
-    my $clear_cont = sub
-    {
+    my $clear_cont = sub {
         no strict;
         $continue = 0;
     };
@@ -47,28 +49,26 @@ sub main
 
     unwind(sub
            {
-               no strict;
                read_ws_data("states.dat", '_d_order', '_d_edge', '_d_test', '_d_func', '_d_next');
            });
     
     # Auto create a col for each unique test. $true is true, the rest default to false.
     unwind(sub
            {
-               no strict;
                $_d_test =~ s/^\$//;
                if (! exists($known{$_d_test}))
                {
                    $known{$_d_test} = 1;
                    newc($_d_test);
                }
-               if ($_d_test eq 'true')
-               {
-                   set_eenv($_d_test, 1);
-               }
-               else
-               {
-                   set_eenv($_d_test, 0);
-               }
+               # if ($_d_test eq 'true')
+               # {
+               #     set_eenv($_d_test, 1);
+               # }
+               # else
+               # {
+               #     set_eenv($_d_test, 0);
+               # }
            });
 
     # Set defaults
@@ -76,6 +76,7 @@ sub main
            { 
                no strict;
                $_d_state = "page_search";
+               reset_tests();
                # $edit = 1;
                # $_d_state = "edit_page";
                # $save = 1;
@@ -83,7 +84,6 @@ sub main
 
     my $fref = sub
     {
-        no strict;
         if ($_d_edge eq $true)
         {
             print "";
@@ -94,44 +94,36 @@ sub main
     while(1)
     {
         call_state();
-
-        # Reset all tests to false, except true which is always true.
-        unwind(sub
-               {
-                   no strict;
-                   if ($_d_test eq 'true')
-                   {
-                       set_eenv($_d_test, 1);
-                   }
-                   else
-                   {
-                       set_eenv($_d_test, 0);
-                   }
-               });
-
-        unwind(sub
-               {
-                   no strict;
+        # unwind(sub {
+        #            if (! $next)
+        #            {
+        #                reset_tests();
+        #            }});
+        unwind(sub {
                    if ($_d_edge eq $_d_state)
                    {
                        print "Action:  $_d_order $_d_test\n";
                    }
                });
-
         print "\nChoose one:";
         my $var = <>;
 
-        unwind(sub
-               {
-                   no strict;
+        # (Wrong) Instead of $$_d_test (dollar dollar sigil) must use set_eenv() and $_d_test.  Whatever test
+        # is in $_d_test needs to be set to true. If $_d_test == 'edit' then $edit=1 or set_eenv('edit', 1);
+        
+        # Ok. This didn't work and is actually not necessary. When is set_eenv() necessary?  When could is
+        # possibly work? The last thing that happens at the end of unwind() is copying the $var over the
+        # $hr->{$var} in the table. Therefore set_eenv() can never work, unless there was a column that did
+        # not previously exist.
+        
+        # set_eenv($_d_test, 1);
+        unwind(sub {
                    if ($_d_order == $var && $_d_edge eq $_d_state)
                    {
-                       # Instead of $$_d_test (dollar dollar sigil) must use set_eenv() and $_d_test.
-                       # Whatever test is in $_d_test needs to be set to true. If $_d_test == 'edit' then
-                       # $edit=1 or set_eenv('edit', 1);
-                       print "Setting col $_d_test to 1\n";
+                       no strict;
+                       # $$_d_test works. 
                        $$_d_test = 1;
-                       # set_eenv($_d_test, 1);
+                       print "selected: next: $next edit: $edit\n";
                    }
                });
     }    
@@ -147,17 +139,17 @@ sub call_state
     my $return_flag = 0;
     unwind(sub
            {
-               no strict;
                $test_counter = 0;
                $next_state = "";
            });
 
     test_edges();
-    # print("next_state1: $next_state");
+    # print("test_edges() done, next_state1: $next_state\n");
+
+    # unwind(sub { print "test_edges() done next: $next _d_order: $_d_order\n"; });
 
     unwind(sub
            {
-               no strict;
                if ($next_state ne "wait")
                {
                    $_prev_state = $_d_state;
@@ -168,7 +160,8 @@ sub call_state
                        print Dumper(hr());
                        exit(1);
                    }
-                   if ($next_state ne 'next')
+                   # if ($next_state ne 'next')
+                   if ( ! $next)
                    {
                        $return_flag = 1;
                    }
@@ -181,12 +174,12 @@ sub call_state
 
     if ($return_flag)
     {
+        print "call_state() returning\n";
         return;
     }
     # Fix this. Can't have a perl call in unwind sub. Or can we? 
     call_state();
 };
-
 
 
 # ./index.pl _d_state="page_search" site_gen="1" site_name="bmw2002"
@@ -219,14 +212,22 @@ sub test_edges
 
     # keep_row('($_d_order == $test_counter) && ($_d_edge eq $_d_state)');
 
+    keep(sub 
+         {
+             return (($_d_order == $test_counter) && ($_d_edge eq $_d_state));
+         });
+    
+    unwind(sub { print Dumper(hr()); });
+
+    exit();
+
     unwind(sub
            {
-               no strict;
                # print Dumper(hr());
-               #print "tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
+               # print "tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
                if (($_d_order == $test_counter) && ($_d_edge eq $_d_state))
                {
-                   print "M-3: _d_test: $_d_test eenv($_d_test): " . get_eenv($_d_test) . " tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
+                   print "M-3: _d_test: $_d_test edit: $edit eenv($_d_test): " . get_eenv($_d_test) . " tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
 
                    $_d_test =~ s/^\$//;
                    if ($_d_test eq "true" || get_eenv($_d_test))
@@ -249,14 +250,12 @@ sub test_edges
 
     my $dump = sub
     {
-        no strict;
         print "rowc: " . rowc() . "\n";
         print "hr: " . Dumper(hr());
     };
 
     unwind(sub
            {
-               no strict;
                if ( $_d_result ) 
                {
                    # When using call_deft(), only want the sub name, not ().
@@ -270,8 +269,15 @@ sub test_edges
                        dispatch("_d_func");
                    }
                    $next_state = $_d_next;
-                   $return_state = $_d_next;
-                   print("ns:$next_state _d_next:$_d_next _d_state:$_d_state\n");
+                   if ($_d_next eq 'next')
+                   {
+                       $next_state = $_d_state; # When next, state stays the same.
+                       reset_tests();
+                       $next = 1; # When next, set $next to true.
+                   }
+                   # $return_state = $_d_next;
+                   $return_state = $next_state;
+                   print("ns:$next_state _d_next:$_d_next _d_state:$_d_state _d_order: $_d_order\n");
                    $return_flag = 1;
                    # It seems wrong and unsafe to return from inside an unwind, and returning here didn't work. I
                    # guess it was returning only from unwind and not from test_edges.
@@ -282,18 +288,16 @@ sub test_edges
     {
         unwind(sub
                {
-                   no strict;
                    $next_state = $return_state;
                    $test_counter = 0;
+                   # print "have rf: next: $next _d_order: $_d_order return_state: $return_state\n";
                });
-        print "ret ns: $return_state\n";
         return;
     }
 
 
     unwind(sub
            {
-               no strict;
                # if (($_d_order == $test_counter) && ($_d_edge eq $_d_state))
 
                # I think we want to increment test_counter for all the states with matching edges. If our state is
@@ -302,13 +306,15 @@ sub test_edges
 
                if ($_d_edge eq $_d_state)
                {
-                   if ((!$_d_result) || ($next_state eq 'next'))
+                   # if ((!$_d_result) || ($next_state eq 'next'))
+                   if ((!$_d_result) || ($next == 1))
                    {
                        $test_counter++;
                        # Normally, this is where we would use $$test_counter (note the 2 '$' chars).
 
                        # Must set_eenv() or invent a rewind because the $$var won't be written back
                        # to the table until after $fref has completed each iteration.
+
                        set_eenv('test_counter', $test_counter);
                        # print "M-2: tc: $test_counter\n";
                    }
@@ -321,5 +327,22 @@ sub test_edges
     # stream management. The call to test_edges() is *not* inside the same unwind block as $test_counter++.
     
     test_edges();
+}
 
+# Must be called inside unwind().
+sub reset_tests()
+{
+    # Reset all tests to false, except $true which is always true.
+    no strict;
+    # print "setting $_d_test to 0\n";
+    $$_d_test = 0;
+    if ($_d_test eq 'true')
+    {
+        $true = 1;
+        print "setting true to 1\n";
+        # set_eenv($_d_test, 1);
+    }
+    # {
+    #     set_eenv($_d_test, 0);
+    # }
 }

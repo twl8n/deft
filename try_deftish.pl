@@ -15,19 +15,21 @@ sub main
 {
     init();
 
+    our ($tstream, $sequence, $make, $model, $displacement, $units);
+    
     my $dump = sub
     {
-        no strict;
         print Dumper(hr());
     };
 
-    my $fref = sub
-    { 
-        no strict;
-        read_tab_data("./demo.dat", 'sequence', 'make', 'model', 'displacement','units');
-    };
-    unwind($fref);
-
+    unwind(sub { 
+               read_tab_data("./demo.dat", 'sequence', 'make', 'model', 'displacement','units');
+           });
+    
+    unwind(sub {
+               print "stuff: $sequence $make $model\n";
+           });
+    
     dcc("distinct_units", 
         "units",
         [""],
@@ -50,7 +52,7 @@ sub main
 
     exit();
 
-    $fref = sub
+    my $fref = sub
     {
         no strict;
         # Even though $$vars work, $hr is not a global. It must be a file global and oddly not visible, even
