@@ -59,17 +59,20 @@ sub main
                if (! exists($known{$_d_test}))
                {
                    $known{$_d_test} = 1;
-                   newc($_d_test);
                }
-               # if ($_d_test eq 'true')
-               # {
-               #     set_eenv($_d_test, 1);
-               # }
-               # else
-               # {
-               #     set_eenv($_d_test, 0);
-               # }
            });
+
+    unwind(sub {
+               foreach my $key (keys(%known))
+               {
+                   newc($key);
+               }
+               no strict;
+               $$key = 0;
+               $true = 1;
+           });
+    
+    # unwind($dump);
 
     # Set defaults
     unwind(sub
@@ -99,14 +102,21 @@ sub main
         #            {
         #                reset_tests();
         #            }});
+        my %choice;
         unwind(sub {
                    if ($_d_edge eq $_d_state)
                    {
                        print "Action:  $_d_order $_d_test\n";
+                       $choice{$_d_order} = $_d_test;
                    }
                });
         print "\nChoose one:";
         my $var = <>;
+        chomp($var);
+        
+        my $set_bool = $choice{$var};
+        
+        print "sb: $set_bool\n";
 
         # (Wrong) Instead of $$_d_test (dollar dollar sigil) must use set_eenv() and $_d_test.  Whatever test
         # is in $_d_test needs to be set to true. If $_d_test == 'edit' then $edit=1 or set_eenv('edit', 1);
@@ -118,13 +128,14 @@ sub main
         
         # set_eenv($_d_test, 1);
         unwind(sub {
-                   if ($_d_order == $var && $_d_edge eq $_d_state)
-                   {
+                   # if ($_d_order == $var && $_d_edge eq $_d_state)
+                   # {
                        no strict;
                        # $$_d_test works. 
-                       $$_d_test = 1;
-                       print "selected: next: $next edit: $edit\n";
-                   }
+                       #$$_d_test = 1;
+                       $$set_bool = 1;
+                       # print "selected: next: $next edit: $edit\n";
+                   # }
                });
     }    
 
@@ -217,30 +228,19 @@ sub test_edges
              return (($_d_order == $test_counter) && ($_d_edge eq $_d_state));
          });
     
-    unwind(sub { print Dumper(hr()); });
-
-    exit();
+    # unwind(sub { print Dumper(hr()); });
 
     unwind(sub
            {
-               # print Dumper(hr());
-               # print "tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
-               if (($_d_order == $test_counter) && ($_d_edge eq $_d_state))
+               print "M-3: _d_test: $_d_test edit: $edit eenv($_d_test): " . get_eenv($_d_test) . " tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
+               
+               $_d_test =~ s/^\$//;
+               if ($_d_test eq "true" || get_eenv($_d_test))
                {
-                   print "M-3: _d_test: $_d_test edit: $edit eenv($_d_test): " . get_eenv($_d_test) . " tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
-
-                   $_d_test =~ s/^\$//;
-                   if ($_d_test eq "true" || get_eenv($_d_test))
-                   {
-                       # print "_d_test: $_d_test tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
-                       print "M-1: _d_test: $_d_test get_eenv($_d_test): " . get_eenv($_d_test) . "\n";
-                       print "M-1: tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
-                       $_d_result = 1;
-                   }
-                   else
-                   {
-                       $_d_result = 0;
-                   }
+                   # print "_d_test: $_d_test tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
+                   print "M-1: _d_test: $_d_test get_eenv($_d_test): " . get_eenv($_d_test) . "\n";
+                   print "M-1: tc: $test_counter do: $_d_order ds: $_d_state de: $_d_edge\n";
+                   $_d_result = 1;
                }
                else
                {
@@ -283,6 +283,20 @@ sub test_edges
                    # guess it was returning only from unwind and not from test_edges.
                }
            });
+
+    unwind(sub
+           {
+               read_ws_data("states.dat", '_d_order', '_d_edge', '_d_test', '_d_func', '_d_next');
+           });
+
+    unwind(sub { $_d_test =~ s/^\$//; });
+
+
+    # unwind(sub
+    # {
+    #     print "hr: " . Dumper(hr()) . "\n";
+    # });
+
 
     if ($return_flag)
     {
@@ -339,7 +353,7 @@ sub reset_tests()
     if ($_d_test eq 'true')
     {
         $true = 1;
-        print "setting true to 1\n";
+        # print "setting true to 1\n";
         # set_eenv($_d_test, 1);
     }
     # {
