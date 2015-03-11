@@ -126,6 +126,8 @@ sub keep
             # print "test: $test $::_d_order == $::test_counter && $::_d_edge eq $::_d_state\n";
             if ($test)
             {
+                # $new[$new_row][$scope] = $hr;
+                # $new_row++;
                 push(@new, $hr);
             }
         }

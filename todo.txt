@@ -13,6 +13,9 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
+- instead of keep() and reloading the state table, increment
+  scope, copy the keep() record(s) to the new scope and continue.
+
 - remove all states except current state, after each pass read
   state table again. Can't keep state table because multi-true
   state booleans would make the state boolean aggregation
