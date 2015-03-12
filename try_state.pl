@@ -13,7 +13,7 @@ require 'deftish.pm';
 
 our ($_d_state, $next_state, $_d_result, $test_counter);
 our (%known, $_prev_state, $_d_order, $_d_edge, $_d_test, $_d_func, $_d_next);
-our ($next, $edit, $delete, $insert, $item, $site_gen, $confirm, $save, $continue, $page_gen, $auto_gen, $con_pk, $true);
+our ($save_next, $edit_page, $next, $save_page, $next_page, $edit, $delete, $insert, $item, $site_gen, $confirm, $save, $continue, $page_gen, $auto_gen, $con_pk, $true);
 
 main();
 
@@ -97,13 +97,12 @@ sub main
     while(1)
     {
         call_state();
-        # unwind(sub {
-        #            if (! $next)
-        #            {
-        #                reset_tests();
-        #            }});
+        unwind(sub {
+                   reset_tests();
+               });
         my %choice;
         unwind(sub {
+                   # print rowc() . " post reset next: $next edit: $edit\n";
                    if ($_d_edge eq $_d_state)
                    {
                        print "Action:  $_d_order $_d_test\n";
@@ -132,7 +131,7 @@ sub main
                    # {
                        no strict;
                        # $$_d_test works. 
-                       #$$_d_test = 1;
+                       # $$_d_test = 1;
                        $$set_bool = 1;
                        # print "selected: next: $next edit: $edit\n";
                    # }
@@ -163,6 +162,14 @@ sub call_state
            {
                if ($next_state ne "wait")
                {
+                   print "prev: $_prev_state next: $next_state _d_state: $_d_state\n";
+
+                   # if ($next_state ne 'next')
+                   # if ( ! $next)
+                   if ($_d_state != $next_state)
+                   {
+                       $return_flag = 1;
+                   }
                    $_prev_state = $_d_state;
                    $_d_state = $next_state;
                    if (! $_d_state)
@@ -170,11 +177,6 @@ sub call_state
                        print("_d_state undefined. prev: $_prev_state\n");
                        print Dumper(hr());
                        exit(1);
-                   }
-                   # if ($next_state ne 'next')
-                   if ( ! $next)
-                   {
-                       $return_flag = 1;
                    }
                }
                elsif ($next_state eq 'wait')
@@ -269,16 +271,33 @@ sub test_edges
                        dispatch("_d_func");
                    }
                    $next_state = $_d_next;
-                   if ($_d_next eq 'next')
-                   {
-                       $next_state = $_d_state; # When next, state stays the same.
-                       reset_tests();
-                       $next = 1; # When next, set $next to true.
-                   }
+
+                   no strict;
+                   # reset_tests();
+                   my $t_func_name = $_d_func;
+                   $t_func_name =~ s/\(\)//;
+                   print "tf: $t_func_name\n";
+                   $$t_func_name = 1; # New state bool is same name as function that was dispatched.
+
+                   print "Getting col $t_func_name: $$t_func_name\n";
+
+                   # Temporarily break next. Instead we always run until we hit wait.
+
+                   # if ($_d_next eq 'next')
+                   # {
+                   #     $next_state = $_d_state; # When next, state stays the same.
+                   #     reset_tests();
+                   #     $next = 1; # When next, set $next to true.
+                   # }
+
+
                    # $return_state = $_d_next;
                    $return_state = $next_state;
+                   #  $_d_state = $_d_next;
                    print("ns:$next_state _d_next:$_d_next _d_state:$_d_state _d_order: $_d_order\n");
+
                    $return_flag = 1;
+
                    # It seems wrong and unsafe to return from inside an unwind, and returning here didn't work. I
                    # guess it was returning only from unwind and not from test_edges.
                }
@@ -304,7 +323,7 @@ sub test_edges
                {
                    $next_state = $return_state;
                    $test_counter = 0;
-                   # print "have rf: next: $next _d_order: $_d_order return_state: $return_state\n";
+                   # print "have rf: next: $next edit: $edit _d_order: $_d_order return_state: $return_state\n";
                });
         return;
     }
@@ -348,13 +367,17 @@ sub reset_tests()
 {
     # Reset all tests to false, except $true which is always true.
     no strict;
-    # print "setting $_d_test to 0\n";
-    $$_d_test = 0;
-    if ($_d_test eq 'true')
+    # print &rowc . " setting $_d_test to 0\n";
+    
+    foreach my $key (keys(%known))
     {
-        $true = 1;
-        # print "setting true to 1\n";
-        # set_eenv($_d_test, 1);
+        $$key = 0;
+        if ($key eq 'true')
+        {
+            $true = 1;
+            # print "setting true to 1\n";
+            # set_eenv($_d_test, 1);
+        }
     }
     # {
     #     set_eenv($_d_test, 0);
