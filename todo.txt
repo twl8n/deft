@@ -13,8 +13,18 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
-- need to clear the matching state after a hit, but keep the new state set after dispatch.
+- x try_pure_state.pl, works, assumes dispatched function sets a state boolean of the same name as the function
 
+- Add multi state testing
+
+- Add new column for new state bool set at the end of an interation
+
+- Add comment feature to states.dat, mostly to allow column
+  names, also commentary about programmer's intent.
+
+
+
+- need to clear the matching state after a hit, but keep the new state set after dispatch.
 
 - instead of keep() and reloading the state table, increment
   scope, copy the keep() record(s) to the new scope and continue.

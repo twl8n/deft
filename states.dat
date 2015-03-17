@@ -1,3 +1,4 @@
+#order  state-edge      test        func-dispatch   next-state-edge
 0	page_search	$edit	    null()	    edit_page
 1	page_search	$delete	    null()	    ask_delete_page
 2	page_search	$insert	    null()          edit_new_page
@@ -22,9 +23,8 @@
 3       item_search     home        null()          page_search
 4	item_search	$true	    item_search()   wait
 0	edit_item	$save	    save_item()	    item_search
-1	edit_item	$continue   save_item()	    edit_item
-2	edit_item	save_item   edit_item()	    wait
-3	edit_item	next	    save_item()	    edit_item
-4	edit_item	save_item   next_item()	    edit_item
-5       edit_item       next_item   edit_item()	    wait
-6 	edit_item	$true 	    edit_item	    wait
+1	edit_item	$continue   save_item()	    wait
+2	edit_item	save_next   save_item()	    edit_item
+3	edit_item	save_item   next_item()	    edit_item
+4       edit_item       next_item   edit_item()	    wait
+5 	edit_item	$true 	    edit_item	    wait

@@ -93,6 +93,13 @@ sub read_data
         while ($temp = <IN>)
         {
             my $new_hr;
+
+            if ($temp =~ m/^\s*#/)
+            {
+                We have a comment, ignore this line.
+                next;
+            }
+
             # Don't use split because Perl will truncate the returned array due to an undersireable feature
             # where arrays returned and assigned have null elements truncated.
 
