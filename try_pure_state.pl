@@ -13,7 +13,7 @@ main();
 sub main
 {
     $| = 1;
-    read_data("states.dat", 'order', 'edge', 'test', 'func', 'next');
+    read_data("states.dat", 'order', 'edge', 'choice', 'test', 'func', 'next');
 
     my $curr_state = 'page_search';
     my $do_next = 0;
@@ -25,7 +25,7 @@ sub main
             print "Current state: $curr_state\n";
             foreach my $hr (@table)
             {
-                if ($hr->{edge} eq $curr_state)
+                if (($hr->{edge} eq $curr_state) && $hr->{choice})
                 {
                     print "$hr->{test}\n";
                 }
@@ -96,7 +96,7 @@ sub read_data
 
             if ($temp =~ m/^\s*#/)
             {
-                We have a comment, ignore this line.
+                # We have a comment, ignore this line.
                 next;
             }
 

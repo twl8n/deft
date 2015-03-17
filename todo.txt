@@ -19,8 +19,12 @@ and the answer in order to keep track of the context of the comments.
 
 - Add new column for new state bool set at the end of an interation
 
-- Add comment feature to states.dat, mostly to allow column
+- x Add comment feature to states.dat, mostly to allow column
   names, also commentary about programmer's intent.
+
+- x Add 'choice' top-level test flag so that state machine test only shows
+  top level choices. Also works as a sanity check for calls to
+  the state machine.
 
 
 
