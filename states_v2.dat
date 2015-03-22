@@ -1,4 +1,4 @@
-| #order | state-edge    | choice | test             | func-dispatch     | next-state-edge |
+| order  | state-edge    | choice | test             | func-dispatch     | next-state-edge |
 |--------+---------------+--------+------------------+-------------------+-----------------|
 |      0 | page_search   |      1 | $edit            | null()            | edit_page       |
 |      1 | page_search   |      1 | $delete          | null()            | ask_delete_page |

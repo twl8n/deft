@@ -269,6 +269,98 @@ sub unwind
 # read_tab_data("./demo.dat", 'sequence', 'make', 'model', 'displacement','units');
 # read_ws_data(...);
 
+# Treat org mode like \s+|\s+ is the column separator
+sub read_state_data
+{
+    my $data_file = shift(@_); # first arg is data file $_[0]
+    my @va = @_; # remaining args are column names, va mnemonic for variables.
+    
+    my($temp);
+    my @fields;
+    
+    # Crossmultiply the current record with a tab separated file. As written, this is non-aggregating code, so
+    # it only knows about one record (the current record). It does know how to clone(), but as far as it
+    # knows, there is only one record.
+    
+    my $log_flag = 0;
+
+    if (! open(IN, "<",  $data_file))
+    {
+        if (! $log_flag)
+        {
+            write_log("Error: Can't open $data_file for reading");
+            $log_flag = 1;
+        }
+        # At least in the real Deft simply exiting here leaves all the downstream ancestors hanging
+        # around. rewind, don't exit.  
+    }
+    else
+    {
+        # Need to make a copy of the orig record for each input record. Either delete the orig or append one
+        # of the input recs onto it.
+
+        my $first = 1;
+        while ($temp = <IN>)
+        {
+            my $new_hr = $hr;
+            # Don't use split because Perl will truncate the returned array due to an undersireable feature
+            # where arrays returned and assigned have null elements truncated.
+
+            # Also, make sure there is a terminal \n which makes the regex both simpler and more robust.
+		
+            if ($temp !~ m/\n$/)
+            {
+                $temp .= "\n";
+            }
+
+            # Get all the fields before we start so the code below is cleaner, and we want all the line
+            # splitting regex to happen here so we can swap between tab-separated, whitespace-separated, and
+            # whatever.
+
+            # Remove the leading | and whitespace. 
+            $temp =~ s/^\|\s+//;
+
+            my @fields;
+            while ($temp =~ s/^(.*?)(?:\s+\|\s+)|\n)//smg)
+            {
+                push(@fields, $1);
+            }
+
+            print Dumper(\@fields) . "\n";
+
+            if (! $first)
+            {
+                # Clone the current record, and push the clone onto the table. Since the record is cloned, we
+                # only need to deal with the hash keys, and not the $$vars. unwind() won't see these cloned
+                # records in this interation.
+
+                $new_hr = clone();
+                for (my $xx=0; $xx<=$#va; $xx++)
+                {
+                    no strict;
+                    $new_hr->{$va[$xx]} = $fields[$xx];
+                }
+            } 
+            else
+            {
+                # This is the actual current record, and unwind will assign the $$vars back to the hash,
+                # however that back-assignment is in a loop over the keys of the hash, so we have to add the
+                # hash keys and $$vars.
+
+                $first = 0;
+                for (my $xx=0; $xx<=$#va; $xx++)
+                {
+                    no strict;
+                    $new_hr->{$va[$xx]} = $fields[$xx];
+                    ${$va[$xx]} = $fields[$xx];
+                }
+            }
+        }
+    }
+    close(IN);
+}
+
+# Read whitespace data
 sub read_ws_data
 {
     return read_data('\s+', @_);
@@ -332,6 +424,8 @@ sub read_data
             {
                 push(@fields, $1);
             }
+
+            print Dumper(\@fields) . "\n";
 
             if (! $first)
             {

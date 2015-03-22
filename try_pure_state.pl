@@ -13,7 +13,7 @@ main();
 sub main
 {
     $| = 1;
-    read_data("states.dat", 'order', 'edge', 'choice', 'test', 'func', 'next');
+    read_state_data("states.dat", 'order', 'edge', 'choice', 'test', 'func', 'next');
 
     my $curr_state = 'page_search';
     my $do_next = 0;
@@ -68,8 +68,8 @@ sub main
     }
 }
 
-
-sub read_data
+# This is a non-deftish version that simply copies the state table into a list of hashes.
+sub read_state_data
 {
     my $data_file = shift(@_);
     my @va = @_; # remaining args are column names, va mnemonic for variables.
@@ -94,6 +94,9 @@ sub read_data
         {
             my $new_hr;
 
+            # Remove the leading | and whitespace. 
+            $temp =~ s/^\|\s+//;
+
             if ($temp =~ m/^\s*#/)
             {
                 # We have a comment, ignore this line.
@@ -114,21 +117,33 @@ sub read_data
             # splitting regex to happen here so we can swap between tab-separated, whitespace-separated, and
             # whatever.
 
+            my $has_values = 0;
             my @fields;
-            while ($temp =~ s/^(.*?)(\s+|\n)//smg)
+            while ($temp =~ s/^(.*?)(?:\s*\|\s+|\n)//smg)
             {
                 # Clean up "$var" and "func()" to be "var" and "func".
                 my $raw = $1;
                 $raw =~ s/\(\)//;
                 $raw =~ s/^\$//;
+
+                # Trim whitespace from values. This probably only occurs when there aren't | chars on the line.
+                $raw =~ s/^\s+(.*)\s+$/$1/;
+                if ($raw ne '')
+                {
+                    $has_values = 1;
+                }
                 push(@fields, $raw);
             }
             
-            for (my $xx=0; $xx<=$#va; $xx++)
+            if ($has_values)
             {
-                $new_hr->{$va[$xx]} = $fields[$xx];
+                for (my $xx=0; $xx<=$#va; $xx++)
+                {
+                    $new_hr->{$va[$xx]} = $fields[$xx];
+                    print "$va[$xx]: $fields[$xx]\n";
+                }
+                push(@table, $new_hr);
             }
-            push(@table, $new_hr);
         }
     }
     close(IN);

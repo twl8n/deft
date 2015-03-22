@@ -13,6 +13,24 @@ Get rid of comments, and instead use Q:/A: pairs so we have both a question
 and the answer in order to keep track of the context of the comments.
 ---------------------------------------------------------------------
  
+- new state table features
+
+# return sets bool same as current state name in keeping with functions setting a bool same as the function
+# name. Function jump() sets $jump in keeping with the convention. Keep jump() return bool values on a stack,
+# and pop when returning.
+
+- add support for column header and hline in try_pure_state.pl read_state_data().
+
+- remove the first column (order) from states_v2.dat
+
+- + states_v2.dat is org mode format
+
+- perhaps manually revert states.dat to version 1 format.
+
+- x Convert whitespace state table data to org-table: query
+  replace [ ^q^i]+ with ^q^i, org-mode, select all,
+  org-table-convert-region
+
 - x try_pure_state.pl, works, assumes dispatched function sets a state boolean of the same name as the function
 
 - Add multi state testing
@@ -26,12 +44,16 @@ and the answer in order to keep track of the context of the comments.
   top level choices. Also works as a sanity check for calls to
   the state machine.
 
+- Rewrite deftish state machine with new non-crushing loop ala
+  try_pure_state.pl
 
+- (old deftish state machine)need to clear the matching state
+  after a hit, but keep the new state set after dispatch.
 
-- need to clear the matching state after a hit, but keep the new state set after dispatch.
-
-- instead of keep() and reloading the state table, increment
-  scope, copy the keep() record(s) to the new scope and continue.
+- (No, but might be interesting. Use the easier method of
+  try_pure_state.pl) instead of keep() and reloading the state
+  table, increment scope, copy the keep() record(s) to the new
+  scope and continue.
 
 - remove all states except current state, after each pass read
   state table again. Can't keep state table because multi-true
